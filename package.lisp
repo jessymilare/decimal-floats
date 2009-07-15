@@ -1,5 +1,7 @@
-;;; -*- mode: lisp; indent-tabs: nil -*-
+;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-(defpackage :super-floats
-  (:use :cl)
-  (:export #:test))
+(defpackage :decimal-floats
+  (:use :cl :alexandria)
+  (:export
+   #:+maximum-exponent+ #:+minimum-exponent+ #:+maximum-precision+ 
+   #:decimal-float))
