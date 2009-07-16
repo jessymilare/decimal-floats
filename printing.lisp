@@ -2,7 +2,7 @@
 
 (in-package :decimal-floats)
 
-(def-customize-function $get-printing-format (exponent adj-exponent digits)
+(def-customize-function get-decimal-printing-format (exponent adj-exponent digits)
   "See documentation of PRINT-DECIMAL."
   (:scientific (if (and (<= exponent 0)
                         (<= -6 adj-exponent))
@@ -108,7 +108,7 @@ These relations are satisfyied only by :scientific, :engineering,
  among the provided formats.
 
  The format function corresponding to the keywords are accessible through the
-funtion $get-printing-format."
+funtion get-decimal-printing-format."
   (with-inf-nan-handler
       (x :inf-around (write-string (call-next-handler) stream)
          :inf-before (let (printed-exp dot-position) ; ignored variables
@@ -125,7 +125,7 @@ funtion $get-printing-format."
          :nan-around
          (progn
            (multiple-value-bind (printed-exp dot-position place-plus-p omit-minus-p)
-               (call-customize-function #'$get-printing-format format 0 0 0)
+               (call-customize-function #'get-decimal-printing-format format 0 0 0)
              (declare (ignore printed-exp dot-position))
              ;; prints the negative sign, if any
              (cond
@@ -210,14 +210,10 @@ funtion $get-printing-format."
                         finally (unread-char char stream)))))
        (parse-decimal-float string))))
 
-(define-condition decimal-float-parse-error (parse-error)
-  ((string :accessor df-parse-error-string :initarg :string))
-  (:report (lambda (condition stream)
-             (format stream "Invalid decimal float string: \"~a\"."
-                     (df-parse-error-string condition)))))
-
 (defun parse-decimal-float (string &key (start 0) end)
-  (handler-case
+  (with-condition-signalling (parse-decimal-float (condition)
+			      (conversion-syntax (:arguments (list (subseq string start end)))
+				(make-qnan nil condition)))
       (let* ((end (or end (length string)))
              (position start)
              (signed-p (case (char string start)
@@ -268,7 +264,7 @@ funtion $get-printing-format."
                 x))))
     (decimal-float-parse-error ()
       (let ((condition (make-condition 'decimal-float-parse-error
-                                       :string (subseq string start end))))
+                                       :arguments (list (subseq string start end)))))
         (cerror "Return NaN" condition)
         (return-from parse-decimal-float (make-qnan nil condition))))))
 
