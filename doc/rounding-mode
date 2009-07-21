@@ -1,0 +1,55 @@
+
+ Copyright (c) 2009 Gustavo Henrique Milaré
+ See the file license for license information.
+
+ A rounding mode function will be called whenever there are
+some digits (zero or non zero) to be discarded. These situations
+coincide with the times that the ROUND condition may be raised.
+
+ This function must accept three arguments.
+
+  - DISCARDED-DIGITS, a number representing the relative value
+    of the digits that will be discarded.
+    Its value will be greater than, equal to or smaller than 5,
+    if the discarded digits represent a value greater than, exactly equal
+    or smaller than half (0.5) of the value of a one in the next left position.
+    For instance, to round 1.005 to either 1.00 or 1.01,
+    DISCARDED-DIGITS would be 5; to round 1.006 or 1.00999,
+    it would be some value greater than 5 and smaller than 9
+    (i.e. 6 (in case of underflow, see below), 7 or 8);
+    and to round 1.004 or 1.00001, DISCARDED-DIGITS would be some value
+    smaller than 4 and greater than 0
+    (i.e. 1 (in case of underflow, see below), 2 or 3).
+
+    If DISCARDED-DIGITS is 9, it means an overflow occurred.
+    If DISCARDED-DIGITS is 1 or 6, it means un underflow occurred,
+    but it will still obey the restrictions above.
+    If DISCARDED-DIGITS is 0, only zero digits are being discarded.
+
+  - LAST-DIGITS, an integer which represents the value of the
+    last non-discarded digits. The only significant value that
+    can be taken is (rem LAST-DIGITS 10), which will be the
+    last non-discarded digit. Up to three other digits may be
+    taken, which are (rem (truncate LAST-DIGITS 10) 10) and
+    (rem (truncate LAST-DIGITS 100) 10), but it may fail to work.
+    It is 0 in case of overflow.
+
+  - SIGNED-P, a boolean which tells if the number is negative.
+
+ Only one value need to be returned, ROUND-UP-P a boolean. If it is true,
+the number will be rounded away from 0. If it is NIL, the discarded digits
+will be ignored.
+
+ In the case of overflow (when DISCARDED-DIGITS is 9), if ROUND-UP-P is true,
+the rounded number will be infinite with the same size as the number;
+if ROUND-UP-P is NIL, the largest representable number in the current
+precision, with the same sign of the number, is returned.
+
+ In the special case where DISCARDED-DIGITS is 1, if ROUND-UP-P is NIL,
+the value returned will be a zero; if it is true, the number will be
+rounded to the smallest representable non-zero number in the current
+precision with the same sign of the number.
+
+Examples: (plusp discarded-digits) => :round-up (rounds away from zero)
+          nil => :round-down (rounds toward zero)
+          (>= discarded-digits 5) => :round-half-up

@@ -1,0 +1,61 @@
+
+ Copyright (c) 2009 Gustavo Henrique Milaré
+ See the file license for license information.
+
+ A printing format function should take three arguments:
+
+  - EXPONENT, the exponent of the number, i.e., the exponent to be used
+    if all digits are printed as an integer.
+    (In particular, if EXPONENT is non-negative, the number is integral).
+    It will be 0 if number is special (i.e. infinity or NaN)
+
+  - ADJUSTED-EXPONENT, the adjusted exponent of the number, i.e., the
+    exponent to be used if only one digit is placed before the point.
+    It will be 0 if number is a NaN or 1 if number is infinity.
+
+  - DIGITS, the number of significant digits to be printed
+    (including zeroes to the right). It will be 1 if the number is zero,
+    and 0 if (and only if) the number is special.
+
+ They have the mathematical relation
+
+   EXPONENT + (DIGITS - 1) = ADJUSTED-EXPONENT
+
+ and all are given to make manipulation easiear.
+
+ This function must return these four values, in order (non-returned values are always nil):
+
+  - PRINTED-EXPONENT, the exponent to be printed (after the 'E' character)
+    or NIL not to use scientific notation.
+    This is ignored if the number to be printed is special.
+
+  - DOT-POSITION, the position of the point ('.').
+    If positive, it tells how many digits will be printed before the point,
+    including zeroes if necessary.
+    If it is zero, a single zero digit will be placed before the point.
+    If it is negative, a zero digit is placed, then the decimal point, then
+    (- DOT-POSITION) zero digits are placed before the digits of the number.
+    The dot is ommited if dot-position is nil
+    This is ignored if the number to be printed is special.
+
+  - PLACE-PLUS-P, tells if the sign '+' must be *placed* if the number is positive
+    (or a positive zero, or an unsigned NaN).
+
+  - OMIT-MINUS-P, tells if the minus sign '-' must be *omitted* if the number is
+    negative (or a negative zero, or a signed NaN).
+
+ If the printed number must represent the actual number, the relation
+
+   (DOT-POSITION or DIGITS) - 1 + PRINTED-EXPONENT = ADJUSTED-EXPONENT
+
+should be respected, but disrespecting it is valid if desired
+(see, for instance, the :digits format). Also, if the precision
+must be preserved, then DOT-POSITION must either less or equal than
+DIGITS or nil.
+
+ These relations are satisfyied only by :scientific, :engineering,
+:exponencial, :signed-digits+exponent and :digits+exponent
+among the standard formats.
+
+ Examples: (values adjusted-exponent 1 nil nil) => :exponencial (exponencial notation with optional sign)
+           (values nil nil nil t) => :unsigned-digits (only the digits of the number)
