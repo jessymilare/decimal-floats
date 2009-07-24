@@ -1,5 +1,8 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
+;;; Copyright (c) 2009 Gustavo Henrique Milaré
+;;; See the file license for license information.
+
 (defpackage :decimal-floats-system
   (:use :cl :asdf))
 
@@ -15,5 +18,6 @@
   :components ((:file "package")
 	       (:file "structure" :depends-on ("package"))
                (:file "utils" :depends-on ("structure"))
-               (:file "printing" :depends-on ("utils" "structure")))
+               (:file "conditions" :depends-on ("package"))
+               (:file "printing" :depends-on ("utils" "structure" "conditions")))
   :depends-on (:alexandria))

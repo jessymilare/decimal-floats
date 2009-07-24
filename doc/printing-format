@@ -23,7 +23,7 @@
 
  and all are given to make manipulation easiear.
 
- This function must return these four values, in order (non-returned values are always nil):
+ This function must return these five values, in order (non-returned values are always nil):
 
   - PRINTED-EXPONENT, the exponent to be printed (after the 'E' character)
     or NIL not to use scientific notation.
@@ -43,6 +43,9 @@
 
   - OMIT-MINUS-P, tells if the minus sign '-' must be *omitted* if the number is
     negative (or a negative zero, or a signed NaN).
+
+  - PLACE-OPTIONAL-DOT-P, tells if the point should be placed at the end of an integer
+    (e.g. 12345.e10), or, in other words, when DIGITS equals DOT-POSITION.
 
  If the printed number must represent the actual number, the relation
 

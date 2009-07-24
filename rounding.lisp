@@ -5,8 +5,6 @@
 
 (in-package :decimal-floats)
 
-(declaim (inline set-precision get-precision parse-precision))
-
 (declaim (type (integer 0 #.+maximum-precision+) *precision*))
 
 (defvar *precision* +decimal-slot-digits+
@@ -14,7 +12,7 @@
  a number that results from one of the arithmetics operations (except copy operations) will have.
  Any number with more digits will be rounded.")
 
-(def-customize-function (rounding-mode :round-half-up) (discarded-digits last-digits signed-p)
+(def-customize-function (rounding-mode :round-half-up) (discarded-digits last-digit signed-p)
   "The rounding mode to be used. See documentation for FIND-ROUNDING-MODE."
   "This function takes a keyword and returns the corresponding rounding mode function.
  Accepted keywords are :round-half-up, :round-half-down, :round-down,
@@ -24,7 +22,7 @@
 
  Information on how to create a rounding mode function is in the file \"doc/rounding-mode\"."
   (declare (type (mod 10) discarded-digits)
-           (type (unsigned-byte 12) last-digits)
+           (type (unsigned-byte 12) last-digit)
            (type boolean signed-p)
            (optimize speed (space 0)))
   (:round-half-up (>= discarded-digits 5))
@@ -33,10 +31,10 @@
   (:round-up (plusp discarded-digits))
   (:round-half-even (cond
                       ((> discarded-digits 5) t)
-                      ((= discarded-digits 5) (oddp last-digits))))
+                      ((= discarded-digits 5) (oddp last-digit))))
   (:round-ceiling (and (not signed-p) (plusp discarded-digits)))
   (:round-floor (and signed-p (plusp discarded-digits)))
-  (:round-05-up (case (rem last-digits 10)
+  (:round-05-up (case last-digit
                   (0 (plusp discarded-digits))
                   (5 (plusp discarded-digits)))))
 
@@ -52,69 +50,126 @@
             (df-last-slot-first-digit x) (1- +decimal-slot-digits+))
       x)))
 
-(defun %next-up (x))
+(defun %next-up (iexponent slots fsld lsfd)
+  (flet ((%add (x y)
+           (declare (type decimal-slot x y)
+                    (values bit decimal-slot &optional))
+           (let ((value (+ x y)))
+             (declare (type (integer 0 #.(expt 10 +decimal-slot-digits+)) value))
+             (if (= value (expt 10 +decimal-slot-digits+))
+                 (values 1 0)
+                 (values 0 value)))))
+    (declare (inline %add))
+    (let* ((aux (aref +expt-10+ fsld))
+           (end (length slots)))
+      (dotimes (i end)
+        (setf (values aux (aref slots i))
+              (%add (aref slots i) aux)))
+      (let ((last-slot (aref slots (1- end))))
+        (if (/= lsfd (first-digit-of-slot last-slot))
+            (let ((start 0))
+              (if (= +decimal-slot-digits+ (incf fsld))
+                  (setf fsld 0 start 1))
+              (if (= +decimal-slot-digits+ (incf lsfd))
+                  (setf lsfd 0 end (1+ end)))
+              (if (= iexponent +internal-e-max+)
+                  ;; Overflow
+                  (values iexponent slots fsld lsfd t)
+                  (values (1+ iexponent) (resize-slots slots start end) fsld lsfd)))
+            (values iexponent slots fsld lsfd))))))
 
-(defun round-normal-number (delta df-exponent slots fsld discarded-digits signed-p LOCAL-ERROR)
-  (let* ((length (+ (length slots) delta))
-         (precision *precision*)
-         (start 0)
-         (lsfd (if (plusp delta)
-                   1
-                   (first-digit-of-slot (aref slots (1- length))))))
-    (when (> (%count-digits length fsld lsfd) precision)
+(defun %next-down (iexponent slots fsld lsfd)
+  (flet ((%sub (x y)
+           (declare (type decimal-slot x y)
+                    (values bit decimal-slot &optional))
+           (if (<= y x)
+               (values 0 (- x y))
+               (values 1 (- (expt 10 +decimal-slot-digits+)
+                            (the decimal-slot (- y x)))))))
+    (declare (inline %sub))
+    (let* ((aux (aref +expt-10+ fsld))
+           (end (length slots)))
+      (dotimes (i end)
+        (setf (values aux (aref slots i))
+              (%sub (aref slots i) aux)))
+      ;; Non-zero aux here means a zero was received.
+      (assert (zerop aux))
+      (let ((last-slot (aref slots (1- end))))
+        (if (and (> iexponent +internal-e-min+)
+                 (or (zerop last-slot)
+                     (/= lsfd (first-digit-of-slot last-slot))))
+            (let ((start 0))
+              (if (= -1 (decf fsld))
+                  (setf fsld (1- +decimal-slot-digits+) start -1))
+              (if (= -1 (decf lsfd))
+                  (setf lsfd (1- +decimal-slot-digits+) end (1- end)))
+              (setf slots (resize-slots slots start end))
+              (incf (aref slots 0) (* 9 (aref +expt-10+ fsld)))
+              (values (1- iexponent) slots fsld lsfd))
+            (values iexponent slots fsld lsfd))))))
+
+(defun coerce-to-precision-digits (slots end fsld lsfd discarded-digits)
+  (let ((undecided-p t)
+        (start 0)
+        (precision *precision*))
+    (when (> (%count-digits end fsld lsfd) precision)
       (multiple-value-bind (new-length new-fsld) (ceiling (- precision 1 lsfd) +decimal-slot-digits+)
-        (setf fsld new-fsld
-              start (- length new-length)
-              length new-length))
-      (let ((undecided-p t))
-        (multiple-value-bind (last-discarded pow-10)
-            (if (zerop fsld)
-                (values (1- start) (expt 10 +decimal-slot-digits+))
-                (values start (aref +expt-10+ fsld)))
-          (setf discarded-digits
-                (let ((half-slot (truncate pow-10 2))
-                      (slot (rem (aref slots last-discarded) pow-10)))
-                  (cond
-                    ((zerop slot)
-                     (if (zerop discarded-digits)
-                         0
-                         (progn
-                           (setf undecided-p nil)
-                           7)))
-                    ((< slot half-slot)
-                     (setf undecided-p nil)
-                     2)
-                    ((> slot half-slot)
-                     (setf undecided-p nil)
-                     7)
-                    (t ;; (= next-slot half-slot)
-                     (if (zerop discarded-digits)
-                         5
-                         (progn (setf undecided-p nil)
-                                7))))))
-          (if (and undecided-p (plusp last-discarded)
-                   (find-if #'plusp slots :end last-discarded))
-              (incf discarded-digits 2))))
-      (decf (aref slots 0) (rem (aref slots 0) (aref +expt-10+ fsld))))
-    (cond
-      ((zerop delta)
-       (when (plusp start)
-         (setf slots (subseq slots start))))
-      ((plusp delta)
-       (setf slots (adjust-array (if (plusp start)
-                                     (subseq slots start)
-                                     slots)
-                                 new-length :initial-element 0)))
-      (t
-       (setf slots (subseq slots start new-length))))
-    ;; FIXME !!!
+        (setf fsld (- new-fsld)
+              start (- end (1+ new-length))))
+      (multiple-value-bind (last-discarded pow-10)
+          (if (zerop fsld)
+              (values (1- start) (expt 10 +decimal-slot-digits+))
+              (values start (aref +expt-10+ fsld)))
+        (setf discarded-digits
+              (let ((half-slot (truncate pow-10 2))
+                    (slot (rem (aref slots last-discarded) pow-10)))
+                (cond
+                  ((zerop slot)
+                   (if (zerop discarded-digits)
+                       0
+                       (progn
+                         (setf undecided-p nil)
+                         7)))
+                  ((< slot half-slot)
+                   (setf undecided-p nil)
+                   2)
+                  ((> slot half-slot)
+                   (setf undecided-p nil)
+                   7)
+                  (t ;; (= next-slot half-slot)
+                   (if (zerop discarded-digits)
+                       5
+                       (progn (setf undecided-p nil)
+                              7))))))
+        (if (and undecided-p (plusp last-discarded)
+                 (find-if #'plusp slots :end last-discarded))
+            (incf discarded-digits 2))))
+    (setf slots (resize-slots slots start end))
+    (decf (aref slots 0) (rem (aref slots 0) (aref +expt-10+ fsld)))
+    (values slots end fsld lsfd discarded-digits)))
+
+(defun round-finite-number (end iexponent slots fsld discarded-digits signed-p LOCAL-ERROR)
+  (let ((lsfd (if (plusp delta)
+                  0
+                  (first-digit-of-slot (aref slots (1- (length slots)))))))
+    (setf (values slots end fsld lsfd discarded-digits)
+          (coerce-to-precision-digits slots end fsld lsfd discarded-digits))
+    (when (funcall *rounding-mode* discarded-digits
+                   (rem (truncate (aref slots 0) (aref +expt-10+ fsld)) 10)
+                   signed-p)
+      (let (infinite-p)
+        (setf (values iexponent slots fsld lsfd infinite-p)
+              (%next-up iexponent slots fsld lsfd))
+        (when infinite-p
+          (return-from round-finite-number
+            (calling-local-error LOCAL-ERROR (make-infinity signed-p)
+                                 $overflow $inexact $rounded)))))
+    ;; FIXME
     (let* ((zerop (every #'zerop slots))
-           (x (%make-df slots +internal-e-min+)))
+           (x (%make-df slots iexponent)))
       (setf (df-negative-p x) signed-p
-            ;; (df-last-slot-first-digit x) is already 0 by default
-            (df-first-slot-last-digit x) fsld
-            (df-subnormal-p x) t)
-      ;; Attention: order of signalization must be preserved.
+            (df-last-slot-first-digit x) lsfd
+            (df-first-slot-last-digit x) fsld)
       (cond ((plusp discarded-digits)
              (funcall LOCAL-ERROR '$underflow x)
              (funcall LOCAL-ERROR '$subnormal x)
@@ -125,41 +180,40 @@
           (funcall LOCAL-ERROR '$clamped x)
           x))))
 
-(defun round-overflowed-number (delta slots fsld discarded-digits signed-p LOCAL-ERROR)
-  (let* ((new-length (1+ (or (position-if #'plusp ,slots :from-end t)
-                             0)))
-         (delta-length (- (length slots) new-length)))
-    (if (> delta delta-length)
-        (let ((x (if (funcall *rounding-mode* 9 0 ,signed-p)
-                     (make-infinity ,signed-p)
-                     (make-almost-infinity ,signed-p))))
-          (funcall LOCAL-ERROR '$overflow x)
-          (funcall LOCAL-ERROR '$inexact x)
-          (funcall LOCAL-ERROR '$rounded x))
-        (round-normal-number delta-length (- +internal-e-max+ (- delta-length delta))
-                             (adjust-array slots new-length)
+(defun round-overflowed-number (end slots fsld discarded-digits signed-p LOCAL-ERROR)
+  (let ((new-length (1+ (or (position-if #'plusp slots :from-end t)))))
+    (if (> end new-length)
+        (calling-local-error LOCAL-ERROR
+                             (if (funcall *rounding-mode* 9 9 signed-p)
+                                 (make-infinity signed-p)
+                                 (make-almost-infinity signed-p))
+                             ;; Order of signalization must be preserved.
+                             $overflow $inexact $rounded)
+        (round-finite-number new-length (- +internal-e-max+ (- new-length end))
+                             (adjust-array slots new-length :initial-element 0)
                              fsld discarded-digits signed-p LOCAL-ERROR))))
 
-(defmacro normalize-number (df-iexponent slots fsld discarded-digits signed-p)
-  (with-gensyms (delta new-length new-df-iexponent)
-    (once-only (df-iexponent slots fsld lsfd discarded-digits signed-p)
+(defmacro normalize-number (iexponent slots fsld discarded-digits signed-p)
+  (with-gensyms (end new-length new-iexponent)
+    (once-only (iexponent slots fsld lsfd discarded-digits
+                          signed-p new-ixeponent)
       `(cond
-         ((> ,df-iexponent +internal-e-max+)
-          (round-overflowed-number (- ,df-iexponent +internal-e-max+)
+         ((> ,iexponent +internal-e-max+)
+          (round-overflowed-number (- ,iexponent +internal-e-max+)
                                  slots fsld discarded-digits signed-p #'LOCAL-ERROR))
-         ((< ,df-iexponent +internal-e-min+)
-          (round-normal-number (- +internal-e-min+ ,df-iexponent) +internal-e-min+
+         ((< ,iexponent +internal-e-min+)
+          (round-finite-number (- +internal-e-min+ ,iexponent) +internal-e-min+
                                slots fsld discarded-digits signed-p #'LOCAL-ERROR))
          ((zerop (aref ,slots (1- (length ,slots))))
           (let* ((,new-length (1+ (or (position-if #'plusp ,slots :from-end t)
                                       0)))
                  (,delta (- (length ,slots) ,new-length))
-                 (,new-df-iexponent (- ,df-iexponent ,delta)))
-            (when (< ,new-df-iexponent +internal-e-min+)
-              (setf ,delta (+ ,df-iexponent +internal-e-max+)
-                    ,new-df-iexponent (- +internal-e-max+)
+                 (,new-iexponent (- ,iexponent ,delta)))
+            (when (< ,new-iexponent +internal-e-min+)
+              (setf ,delta (+ ,iexponent +internal-e-max+)
+                    ,new-iexponent (- +internal-e-max+)
                     ,new-length (- (length ,slots) ,delta)))
-            (values ,new-df-iexponent
+            (values ,new-iexponent
                     (adjust-array ,slots ,new-length)
                     ,new-length)))
-         (t (round-normal-number 0 df-iexponent slots fsld discarded-digits signed-p))))))
+         (t (round-finite-number 0 iexponent slots fsld discarded-digits signed-p))))))

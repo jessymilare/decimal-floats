@@ -22,17 +22,10 @@ coincide with the times that the ROUND condition may be raised.
     (i.e. 1 (in case of underflow, see below), 2 or 3).
 
     If DISCARDED-DIGITS is 9, it means an overflow occurred.
-    If DISCARDED-DIGITS is 1 or 6, it means un underflow occurred,
-    but it will still obey the restrictions above.
     If DISCARDED-DIGITS is 0, only zero digits are being discarded.
 
-  - LAST-DIGITS, an integer which represents the value of the
-    last non-discarded digits. The only significant value that
-    can be taken is (rem LAST-DIGITS 10), which will be the
-    last non-discarded digit. Up to three other digits may be
-    taken, which are (rem (truncate LAST-DIGITS 10) 10) and
-    (rem (truncate LAST-DIGITS 100) 10), but it may fail to work.
-    It is 0 in case of overflow.
+  - LAST-DIGIT, an integer which represents the value of the
+    last non-discarded digit. It is 9 in case of overflow.
 
   - SIGNED-P, a boolean which tells if the number is negative.
 
