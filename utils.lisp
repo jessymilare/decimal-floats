@@ -183,7 +183,7 @@
           ,(format nil "Fetches the value of ~:@(~A~) and parses it to a better format.
  See documentation for ~:@(~A~) and ~:@(~A~)." var var find-)
           ,@body)
-        (defsetf ,get- (&optional (,name ,var)) (,value)
+        (defsetf ,get- (&optional (,name ',var)) (,value)
           (once-only (,value)
             `(progn
                (setf ,,name (,',find- ,,value))

@@ -8,11 +8,13 @@
 (declaim (type fixnum *condition-flags* *condition-signallers*))
 
 (define-constant +all-conditions+
-    '($clamped $division-by-zero $inexact $invalid-operation
-      $overflow $rounded $subnormal $underflow
-      ;; $conversion-syntax $division-impossible $division-undefined
+    '(decimal-clamped decimal-division-by-zero decimal-inexact decimal-invalid-operation
+      decimal-overflow decimal-rounded decimal-subnormal decimal-underflow
+      ;; decimal-conversion-syntax decimal-division-impossible decimal-division-undefined
       )
   :test #'equal)
+
+(defvar *decimal-local-error*)
 
 (declaim (inline decimal-float-condition))
 
@@ -27,8 +29,8 @@
   "Transforms the list of symbols FLAG-LIST into an internal format suitable for *CONDITION-FLAGS*.
  The list should contain only the following symbols, which are names of conditions:
 
- $CLAMPED  $DIVISION-BY-ZERO  $INEXACT  $INVALID-OPERATION
- $OVERFLOW  $ROUNDED  $SUBNORMAL  $UNDERFLOW.
+ DECIMAL-CLAMPED  DECIMAL-DIVISION-BY-ZERO  DECIMAL-INEXACT  DECIMAL-INVALID-OPERATION
+ DECIMAL-OVERFLOW  DECIMAL-ROUNDED  DECIMAL-SUBNORMAL  DECIMAL-UNDERFLOW.
 
  See some these conditions' documentation for more details."
   (let ((flag-integer 0))
@@ -58,15 +60,15 @@
   "Transforms the list of symbols FLAG-LIST into an internal format suitable for *CONDITION-SIGNALLERS*.
  The list should contain only the following symbols, which are names of conditions:
 
- $CLAMPED  $DIVISION-BY-ZERO  $INEXACT  $INVALID-OPERATION
- $OVERFLOW  $ROUNDED  $SUBNORMAL  $UNDERFLOW.
+ DECIMAL-CLAMPED  DECIMAL-DIVISION-BY-ZERO  DECIMAL-INEXACT  DECIMAL-INVALID-OPERATION
+ DECIMAL-OVERFLOW  DECIMAL-ROUNDED  DECIMAL-SUBNORMAL  DECIMAL-UNDERFLOW.
 
  If the returned value is bound to the variable *CONDITION-SIGNALLERS*, then each condition
  in the SIGNALLER-LIST will throw an error when found during internal arithmetics."
   (find-condition-flags signaller-list))
 
-(def-var-get-and-with (condition-signallers '($clamped $division-by-zero $invalid-operation
-                                              $overflow $underflow))
+(def-var-get-and-with (condition-signallers '(decimal-clamped decimal-division-by-zero decimal-invalid-operation
+                                              decimal-overflow decimal-underflow))
   "Holds information about which conditions should be signalled with the function ERROR
  when found. Use FIND-CONDITION-SIGNALLERS to encode a list of symbols into a suitable
  format for this variable."
@@ -84,8 +86,8 @@
 (defmacro with-operation ((operation-name condition-var &rest operation-arguments)
                           (&rest condition-case)
                           &body body)
-  (with-gensyms (condition-name new-default-result)
-    `(flet ((LOCAL-ERROR (,condition-name ,new-default-result)
+  (with-gensyms (local-error condition-name new-default-result)
+    `(flet ((,local-error (,condition-name ,new-default-result)
               (signal-decimal-condition
                (let ((,condition-var
                       (make-condition ,condition-name :operation ',operation-name
@@ -95,31 +97,41 @@
                            (case ,condition-name
                              ,@condition-case)))
                  ,condition-var))))
-       ,@body)))
+       (let ((*decimal-local-error* #',local-error))
+         ,@body))))
 
-(defmacro calling-local-error (LOCAL-ERROR defined-result &rest conditions)
-  (with-gensyms (condition-signallers condition-flags condition)
-    (let ((bit-numbers (mapcar #'get-condition-bit conditions)))
-      (once-only (LOCAL-ERROR defined-result)
-        `(let ((,condition-signallers *condition-signallers*)
+(defmacro decimal-error-cond (defined-result &body conditions)
+  (with-gensyms (condition-signallers condition-flags condition-var local-error)
+    (let* ((conditions (mapcar #'ensure-list conditions))
+           (bit-numbers (mapcar (compose #'get-condition-bit #'car #'last) conditions)))
+      (once-only (defined-result)
+        `(let ((,local-error *decimal-local-error*)
+               (,condition-signallers *condition-signallers*)
                (,condition-flags *condition-flags*))
-           (unless (zerop ,condition-flags)
-             (cond
-               ,@(loop for condition in conditions
-                    for bit-number in bit-numbers
-                    collect `((logbitp ,bit-number ,condition-signallers)
-                              (funcall ,LOCAL-ERROR ',condition ,defined-result)))
-               (t (setf *condition-flags* (logior ,condition-flags
-                                                  ,(reduce #'logior bit-numbers
-                                                           :key (curry #'ash 1)))))))
-           ,(if defined-result
-                defined-result
-                (progn
-                  (assert (not (cdr conditions)))
-                  `(handler-case
-                       (funcall ,LOCAL-ERROR ',(first conditions) nil)
-                     (decimal-float-condition (,condition)
-                       (operation-defined-result ,condition))))))))))
+           (unless (zerop ,condition-signallers)
+             ,@(loop for condition-spec in conditions
+                  for tests = (butlast condition-spec)
+                  for condition = (car (last condition-spec))
+                  for bit-number in bit-numbers
+                  collect `(and (logbitp ,bit-number ,condition-signallers)
+                                ,@tests
+                                (funcall ,LOCAL-ERROR ',condition ,defined-result)))
+             (setf *condition-flags* (logior ,condition-flags
+                                             ,@(loop for bit-number in bit-numbers
+                                                  collect `(if (and ,@tests)
+                                                               (ash 1 ,bit-number)
+                                                               0)))))
+           (locally ;; avoid compiler-warnings of "deleting unreachable code"
+               #+sbcl (declare (optimize sb-ext:inhibit-warnings))
+               (or ,defined-result
+                   (handler-case
+                       (cond
+                         ,@(loop for condition-spec in conditions
+                              for tests = (butlast condition-spec)
+                              for condition = (car (last condition-spec))
+                              collect `((and ,@tests) (funcall ,LOCAL-ERROR ',condition nil))))
+                     (decimal-float-condition (,condition-var)
+                       (operation-defined-result ,condition-var))))))))))
 
 (macrolet ((def (name (parent) documentation &optional (format-string documentation) &rest format-vars)
              (let ((bit-number (position name +all-conditions+)))
@@ -136,42 +148,42 @@
                     ,(or bit-number
                          `(get-condition-bit ',parent)))))))
 
-  (def $clamped (decimal-float-condition)
+  (def decimal-clamped (decimal-float-condition)
     "The exponent of the result has been constrained or altered due to internal representation limits.")
 
-  (def $division-by-zero (decimal-float-condition)
+  (def decimal-division-by-zero (decimal-float-condition)
     "Attempt to divide finite number by zero or to calculate a negative power of zero.")
 
-  (def $inexact (decimal-float-condition)
+  (def decimal-inexact (decimal-float-condition)
     "The result needed to be rounded due to the current precision~
  and any discarded digits were non-zero.")
 
-  (def $invalid-operation (decimal-float-condition)
+  (def decimal-invalid-operation (decimal-float-condition)
     "Invalid operation.")
 
-  (def $overflow (decimal-float-condition)
-    "The value of the adjusted exponent (as returned by $logb) of the result~
+  (def decimal-overflow (decimal-float-condition)
+    "The value of the adjusted exponent (as returned by decimal-logb) of the result~
  is greater than +maximum-exponent+ and cannot be returned.")
 
-  (def $rounded (decimal-float-condition)
+  (def decimal-rounded (decimal-float-condition)
     "The result was rounded due to the current precision.")
 
-  (def $subnormal (decimal-float-condition)
+  (def decimal-subnormal (decimal-float-condition)
     "The result or the operation is subnormal, i.e.,~
- it has an adjusted exponent (as returned by $logb) less than +minimum-exponent+.")
+ it has an adjusted exponent (as returned by decimal-logb) less than +minimum-exponent+.")
 
-  (def $underflow (decimal-float-condition)
+  (def decimal-underflow (decimal-float-condition)
     "The result of the operation is subnormal and inexact, i.e.,~
- it has an adjusted exponent (as returned by $logb) less than +minimum-exponent+,~
+ it has an adjusted exponent (as returned by decimal-logb) less than +minimum-exponent+,~
  the result needed to be rounded and any discarded digits were non-zero.")
 
-  (def $conversion-syntax ($invalid-operation)
+  (def decimal-conversion-syntax (decimal-invalid-operation)
     "The string given does not conform the numeric string syntax for decimal numbers.")
 
-  (def $division-impossible ($invalid-operation)
+  (def decimal-division-impossible (decimal-invalid-operation)
     "Integer division is impossible due to the current precision.")
 
-  (def $division-undefined ($invalid-operation)
+  (def decimal-division-undefined (decimal-invalid-operation)
     "Attempt to divide zero by zero.")
 
   ;; insufficient-storage, invalid-context
