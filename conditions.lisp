@@ -117,7 +117,9 @@
                                 ,@tests
                                 (funcall ,LOCAL-ERROR ',condition ,defined-result)))
              (setf *condition-flags* (logior ,condition-flags
-                                             ,@(loop for bit-number in bit-numbers
+                                             ,@(loop for condition-spec in conditions
+                                                  for tests = (butlast condition-spec)
+                                                  for bit-number in bit-numbers
                                                   collect `(if (and ,@tests)
                                                                (ash 1 ,bit-number)
                                                                0)))))
