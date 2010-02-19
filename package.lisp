@@ -30,4 +30,4 @@
 
    ;; Printing
    #:get-decimal-printing-format #:find-decimal-printing-format #:*printing-format*
-   #:print-decimal #:parse-decimal))
+   #:print-decimal #:decimal-to-string #:parse-decimal))

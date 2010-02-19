@@ -9,14 +9,10 @@
 
 (define-constant +all-conditions+
     '(decimal-clamped decimal-division-by-zero decimal-inexact decimal-invalid-operation
-      decimal-overflow decimal-rounded decimal-subnormal decimal-underflow
-      ;; decimal-conversion-syntax decimal-division-impossible decimal-division-undefined
-      )
+      decimal-overflow decimal-rounded decimal-subnormal decimal-underflow)
   :test #'equal)
 
 (defvar *decimal-local-error*)
-
-(declaim (inline decimal-float-condition))
 
 (define-condition decimal-float-condition ()
   ((defined-result :accessor operation-defined-result :initarg :defined-result)
@@ -86,9 +82,9 @@
 (defmacro with-operation ((operation-name condition-var &rest operation-arguments)
                           (&rest condition-case)
                           &body body)
-  (with-gensyms (local-error condition-name new-default-result)
+  (with-gensyms (local-error condition-name new-default-result value)
     `(flet ((,local-error (,condition-name ,new-default-result)
-              (signal-decimal-condition
+              (values
                (let ((,condition-var
                       (make-condition ,condition-name :operation ',operation-name
                                       :arguments (list ,@operation-arguments))))
@@ -96,12 +92,16 @@
                        (or ,new-default-result
                            (case ,condition-name
                              ,@condition-case)))
-                 ,condition-var))))
+                 ,condition-var)
+               #'(lambda (,value)
+                   (return-from ,operation-name ,value)))))
        (let ((*decimal-local-error* #',local-error))
          ,@body))))
 
-(defmacro decimal-error-cond (defined-result &body conditions)
-  (with-gensyms (condition-signallers condition-flags condition-var local-error)
+(defmacro decimal-error-cond ((defined-result &key return-p) &body conditions)
+  (check-type return-p boolean)
+  (with-gensyms (condition-signallers condition-flags condition-var
+                                      local-error return-function)
     (let* ((conditions (mapcar #'ensure-list conditions))
            (bit-numbers (mapcar (compose #'get-condition-bit #'car #'last) conditions)))
       (once-only (defined-result)
@@ -115,7 +115,9 @@
                   for bit-number in bit-numbers
                   collect `(and (logbitp ,bit-number ,condition-signallers)
                                 ,@tests
-                                (funcall ,LOCAL-ERROR ',condition ,defined-result)))
+                                (multiple-value-call #'signal-decimal-condition
+                                  (funcall ,local-error ',condition ,defined-result)
+                                  :return-p ,return-p)))
              (setf *condition-flags* (logior ,condition-flags
                                              ,@(loop for condition-spec in conditions
                                                   for tests = (butlast condition-spec)
@@ -125,15 +127,19 @@
                                                                0)))))
            (locally ;; avoid compiler-warnings of "deleting unreachable code"
                #+sbcl (declare (optimize sb-ext:inhibit-warnings))
-               (or ,defined-result
-                   (handler-case
-                       (cond
-                         ,@(loop for condition-spec in conditions
-                              for tests = (butlast condition-spec)
-                              for condition = (car (last condition-spec))
-                              collect `((and ,@tests) (funcall ,LOCAL-ERROR ',condition nil))))
-                     (decimal-float-condition (,condition-var)
-                       (operation-defined-result ,condition-var))))))))))
+             (or ,defined-result
+                 (cond
+                   ,@(loop for condition-spec in conditions
+                        for tests = (butlast condition-spec)
+                        for condition = (car (last condition-spec))
+                        collect `((and ,@tests)
+                                  ,(if return-p
+                                       `(multiple-value-bind (,condition-var ,return-function)
+                                            (funcall ,local-error ',condition nil)
+                                          (funcall ,return-function
+                                                   (operation-defined-result ,condition-var)))
+                                       `(operation-defined-result
+                                         (funcall ,local-error ',condition nil)))))))))))))
 
 (macrolet ((def (name (parent) documentation &optional (format-string documentation) &rest format-vars)
              (let ((bit-number (position name +all-conditions+)))
@@ -191,14 +197,18 @@
   ;; insufficient-storage, invalid-context
   )
 
-(defun signal-decimal-condition (condition)
-  (restart-case (error condition)
-    (return-defined-result ()
-      :report (lambda (stream)
-                (format stream "Return ~A" (operation-defined-result condition)))
-      (operation-defined-result condition))
-    (return-another-value (value)
-      :report "Return another value"
-      :interactive (lambda ()
-                     (list (prompt t "Enter the value to be returned: ")))
-      value)))
+(defun signal-decimal-condition (condition return-function &key return-p)
+  (let ((value
+         (restart-case (error condition)
+           (return-defined-result ()
+             :report (lambda (stream)
+                       (format stream "Return ~A" (operation-defined-result condition)))
+             (operation-defined-result condition))
+           (return-another-value (value)
+             :report "Return another value"
+             :interactive (lambda ()
+                            (list (prompt t "Enter the value to be returned: ")))
+             value))))
+    (if return-p
+        (funcall return-function value)
+        value)))

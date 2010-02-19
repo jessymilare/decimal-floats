@@ -62,11 +62,13 @@
 (defmethod print-object ((x decimal-float) stream)
   (write-string "#$" stream)
   (print-decimal x stream
-      (if *print-readably*
-          (get-printing-format :scientific)
-          *printing-format*)))
+                 :format
+                 (if *print-readably*
+                     (get-printing-format :scientific)
+                     *printing-format*)))
 
-(defun print-decimal (x stream &optional (format *printing-format* formatp))
+(defun print-decimal (x stream &key (format *printing-format* formatp)
+                      (nan-diagnostic-p t))
   "Prints the decimal X to STREAM. FORMAT should be either a keyword
  specifying a standard format or a function. The format argument
  only takes effect on finite numbers.
@@ -104,14 +106,12 @@ funtion GET-PRINTING-FORMAT."
                ;; prints "NaN" or "sNaN", according to NaN type
                (write-string (call-next-handler) stream)
                ;; prints NaN diagnostic number, if any
-               (when-let ((x-slots (df-slots x)))
-                 (etypecase x-slots
-                   (array (%print-decimal stream (df-count-digits x) x-slots
-                                          (df-first-slot-last-digit x)
-                                          (df-last-slot-first-digit x)
-                                          nil nil nil))
-                   (condition           ; FIXME
-                    ))))))
+               (when nan-diagnostic-p
+                 (when-let ((x-slots (df-slots x)))
+                   (%print-decimal stream (df-count-digits x) x-slots
+                                   (df-first-slot-last-digit x)
+                                   (df-last-slot-first-digit x)
+                                   nil nil nil))))))
       (multiple-value-bind (digits exponent adj-exponent x-slots fsld lsfd)
           (parse-info x)
         (multiple-value-bind (printed-exp dot-position place-plus-p omit-minus-p place-dot-p)
@@ -127,6 +127,12 @@ funtion GET-PRINTING-FORMAT."
           (%print-decimal stream digits x-slots fsld lsfd printed-exp dot-position place-dot-p)))))
   (force-output stream)
   x)
+
+(declaim (inline decimal-to-string))
+
+(defun decimal-to-string (x &rest keys)
+  (with-output-to-string (stream)
+    (apply #'print-decimal x stream keys)))
 
 (defun %print-decimal (stream digits x-slots fsld lsfd printed-exp dot-position place-dot-p)
   (let* ((place-dot-p (and place-dot-p dot-position))
@@ -174,11 +180,13 @@ funtion GET-PRINTING-FORMAT."
                                   (member char '(#\+ #\- #\.)))
                         do (write-char char output)
                         finally (unread-char char stream)))))
-       (parse-decimal string))))
+       (with-condition-signallers ('(decimal-invalid-operation))
+         (parse-decimal string :round-p nil)))))
 
-(defun parse-decimal (string &key (start 0) end (round-p t))
-  (with-operation (parse-decimal-float condition (subseq string start (or end (length string))))
-      ((decimal-conversion-syntax (make-qnan nil condition)))
+(defun parse-decimal (string &key (start 0) end (round-p t)
+                      (nan-diagnostic-p t))
+  (with-operation (parse-decimal condition (subseq string start (or end (length string))))
+      ((decimal-conversion-syntax (make-qnan nil (and nan-diagnostic-p condition))))
     (let* ((end (or end (length string)))
            (position start)
            (signed-p (case (char string start)
@@ -207,7 +215,7 @@ funtion GET-PRINTING-FORMAT."
                                           (member x '(#\E #\e #\.)))
                                         string
                                         :start position :end end)
-                           (decimal-error-cond nil decimal-conversion-syntax))
+                           (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))
                          (setf (values iexponent ; ignored
                                        (df-slots nan)
                                        (df-first-slot-last-digit nan)
@@ -218,7 +226,7 @@ funtion GET-PRINTING-FORMAT."
                          (string-equal "Infinity" string :start2 position :end2 end))
                      (make-infinity signed-p))
                     (t
-                     (decimal-error-cond nil decimal-conversion-syntax)))))
+                     (decimal-error-cond (nil :return-p t) decimal-conversion-syntax)))))
           (multiple-value-bind (iexponent slots fsld lsfd)
               (%parse-decimal string position end)
             (declare (ignore lsfd))
@@ -242,11 +250,11 @@ funtion GET-PRINTING-FORMAT."
                                             (find char "+-")))
                                       (digit-char-p (char string (1- end))))
                            ;; parse-integer accepts leading and trailing whitespaces, but spec doesn't.
-                           (decimal-error-cond nil decimal-conversion-syntax))
+                           (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))
                          (handler-case (parse-integer string :start (1+ e-position) :end end)
                            (parse-error ()
-                             (decimal-error-cond nil decimal-conversion-syntax))))
-                        (t (decimal-error-cond nil decimal-conversion-syntax)))))
+                             (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))))
+                        (t (decimal-error-cond (nil :return-p t) decimal-conversion-syntax)))))
     (multiple-value-bind (slots fsld lsfd iexponent)
         (calculate-info digits printed-exp dot-position)
       (let* ((position (1- start))
@@ -257,6 +265,6 @@ funtion GET-PRINTING-FORMAT."
                          (if (= position dot-position)
                              (incf position))
                          (or (digit-char-p (char string position))
-                             (decimal-error-cond nil decimal-conversion-syntax)))
+                             (decimal-error-cond (nil :return-p t) decimal-conversion-syntax)))
                      slots fsld lsfd t)))
         (values iexponent slots fsld lsfd)))))

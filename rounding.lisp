@@ -172,7 +172,7 @@
         (when infinite-p
           (return-from round-finite-number
             ;; Overflow
-            (decimal-error-cond (make-infinity signed-p)
+            (decimal-error-cond ((make-infinity signed-p))
                                 decimal-overflow decimal-inexact decimal-rounded)))))
     (let ((x (make-decimal-float iexponent slots :negative-p signed-p
                                  :last-slot-first-digit lsfd :first-slot-last-digit fsld)))
@@ -183,15 +183,15 @@
          (setf (df-subnormal-p x) t)
          (if (plusp discarded-digits)
              ;; Underflow
-             (decimal-error-cond x
+             (decimal-error-cond (x)
                decimal-underflow decimal-subnormal decimal-inexact
                decimal-rounded
                ((every #'zerop slots) decimal-clamped))
-             (decimal-error-cond x
+             (decimal-error-cond (x)
                decimal-subnormal
                (some-digit-discarded-p decimal-rounded))))
         (some-digit-discarded-p
-         (decimal-error-cond x
+         (decimal-error-cond (x)
            ((plusp discarded-digits) decimal-inexact) decimal-rounded))
         (t x)))))
 
@@ -199,11 +199,11 @@
   (let ((new-length (1+ (or (position-if #'plusp slots :from-end t)))))
     (if (> end new-length)
         (decimal-error-cond
-         (if (funcall *rounding-mode* 9 9 signed-p)
-             (make-infinity signed-p)
-             (make-almost-infinity signed-p))
-         ;; Order of signalization must be preserved.
-         decimal-overflow decimal-inexact decimal-rounded)
+            ((if (funcall *rounding-mode* 9 9 signed-p)
+                 (make-infinity signed-p)
+                 (make-almost-infinity signed-p)))
+          ;; Order of signalization must be preserved.
+          decimal-overflow decimal-inexact decimal-rounded)
         (round-finite-number new-length (- +internal-e-max+ (- new-length end))
                              (adjust-array slots new-length :initial-element 0)
                              fsld signed-p))))

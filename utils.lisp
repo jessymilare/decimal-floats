@@ -192,7 +192,7 @@
           ,(format nil "Transforms the ~:@(~A~) given into an internal format (using the function ~:@(~A~))
  and locally binds the returned value to ~:@(~A~).
  See documentation for ~:@(~A~) and ~:@(~A~)." value find- var var find-)
-          `(let ((,',var ,,value))
+          `(let ((,',var (,',find- ,,value)))
              ,@,body-var))))))
 
 (defmacro def-customize-function ((name default-value) lambda-list variable-doc &rest defaults)
