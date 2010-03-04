@@ -7,7 +7,7 @@
 
 (declaim (type (integer 0 #.+maximum-precision+) *precision*))
 
-(defvar *precision* +decimal-slot-digits+
+(defvar *precision* (* 2 +decimal-slot-digits+)
   "The current precision that is being used, i.e., the maximum number of (decimal) digits that
  a number that results from one of the arithmetics operations (except copy operations) will have.
  Any number with more digits will be rounded.")
@@ -21,7 +21,7 @@
  See http://speleotrove.com/decimal/damodel.html#refround for details.
 
  Information on how to create a rounding mode function is in the file \"doc/rounding-mode\"."
-  (declare (type (mod 10) discarded-digits)
+  (declare (type (mod 11) discarded-digits)
            (type (unsigned-byte 12) last-digit)
            (type boolean signed-p)
            (optimize speed (space 0)))
@@ -119,12 +119,13 @@
             (values iexponent slots fsld lsfd))))))
 
 (defun coerce-to-precision-digits (end slots fsld lsfd)
-  (let ((undecided-p t)
-        (start 0)
+  (when (= end 1)
+    (setf lsfd (max lsfd fsld)))
+  (let ((start 0)
         (precision *precision*)
         (discarded-digits 0)
         some-digit-discarded-p)
-    (when (> (%count-digits end fsld lsfd) precision)
+    (when (> (%df-count-digits end fsld lsfd) precision)
       (setf some-digit-discarded-p t)
       (multiple-value-bind (new-length new-fsld) (ceiling (- precision 1 lsfd) +decimal-slot-digits+)
         (setf fsld (- new-fsld)
@@ -138,22 +139,22 @@
                     (slot (rem (aref slots last-discarded) pow-10)))
                 (cond
                   ((zerop slot)
-                   0)
+                   (if (find-if #'plusp slots :end last-discarded)
+                       2
+                       0))
                   ((< slot half-slot)
-                   (setf undecided-p nil)
                    2)
                   ((> slot half-slot)
-                   (setf undecided-p nil)
                    7)
                   (t ;; (= slot half-slot)
-                   5))))
-        (if (and undecided-p (plusp last-discarded)
-                 (find-if #'plusp slots :end last-discarded))
-            (incf discarded-digits 2))))
+                   (if (and (plusp last-discarded)
+                            (find-if #'plusp slots :end last-discarded))
+                       7
+                       5)))))))
     (setf slots (resize-slots slots start end))
     ;; Setting invalid digits to zero
     (decf (aref slots 0) (rem (aref slots 0) (aref +expt-10+ fsld)))
-    (values end slots fsld lsfd discarded-digits some-digit-discarded-p)))
+    (values slots fsld lsfd discarded-digits some-digit-discarded-p)))
 
 (defun round-finite-number (end iexponent slots fsld signed-p)
   (let ((lsfd (if (> end (length slots))
@@ -161,7 +162,7 @@
                   (first-digit-of-slot (aref slots (1- end)))))
         (discarded-digits 0)
         some-digit-discarded-p)
-    (setf (values end slots fsld lsfd discarded-digits some-digit-discarded-p)
+    (setf (values slots fsld lsfd discarded-digits some-digit-discarded-p)
           (coerce-to-precision-digits end slots fsld lsfd))
     (when (funcall *rounding-mode* discarded-digits
                    (rem (truncate (aref slots 0) (aref +expt-10+ fsld)) 10)
@@ -178,7 +179,7 @@
                                  :last-slot-first-digit lsfd :first-slot-last-digit fsld)))
       (cond
         ((and (= +minimum-exponent+ iexponent)
-              (zerop (aref slots (1- end)))) ; end is slots' length
+              (zerop (aref slots (1- (length slots)))))
          ;; Result is subnormal (internally at least, since zero is not subnormal by definition).
          (setf (df-subnormal-p x) t)
          (if (plusp discarded-digits)
@@ -199,7 +200,7 @@
   (let ((new-length (1+ (or (position-if #'plusp slots :from-end t)))))
     (if (> end new-length)
         (decimal-error-cond
-            ((if (funcall *rounding-mode* 9 9 signed-p)
+            ((if (funcall *rounding-mode* 10 10 signed-p)
                  (make-infinity signed-p)
                  (make-almost-infinity signed-p)))
           ;; Order of signalization must be preserved.
@@ -208,6 +209,7 @@
                              (adjust-array slots new-length :initial-element 0)
                              fsld signed-p))))
 
+;;; This macro allows numbers to remain unboxed (e.g. if iexponent is not a fixnum).
 (defmacro normalize-number (iexponent slots fsld signed-p)
   (with-gensyms (new-length new-iexponent)
     (once-only (iexponent slots fsld signed-p)

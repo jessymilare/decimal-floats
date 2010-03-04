@@ -7,93 +7,44 @@
 
 ;;; Inpired by SBCL's sb-bignum source code.
 
-;;; SBCL won't unbox 64-bit integers unless locally, according to some tests.
-;;; FLET takes care of that very nicely.
-(defmacro with-%addc (&body body)
-  `(flet
-       (;; First optimization created, using internal sb-bignum arithmetic.
-        ;; It turns out that the implementation below is almost the same
-        ;; and also portable.
-        ;; Both optimizations (this and the last definition)
-        ;; avoid allocation of a bignum in 64-bit architectures.
-        #+nil
-        (%addc (x y carry)
-          (declare (optimize speed (space 1)))
-          (multiple-value-bind (value binary-carry)
-              (sb-bignum:%add-with-carry x y carry)
-            (cond
-              ((>= value (expt 10 +decimal-slot-digits+))
-               (values 1 (- value (expt 10 +decimal-slot-digits+))))
-              ((= 1 binary-carry)
-               (values 1 (+ +binary-carry-value+ value)))
-              (t (values 0 value)))))
+(defconstant +binary-carry-value+ (rem (expt 2 +decimal-slot-bits+)
+                                       (expt 10 +decimal-slot-digits+)))
 
-        ,(if (not (= 64 +decimal-slot-bits+))
-             ;; Default implementation.
-             '(%addc (x y carry) ; x+y+carry -> (values new-carry result)
-               (declare (optimize speed (space 1)))
-               (let ((value (+ x y carry)))
-                 ;; (truncate value (expt 10 +decimal-slot-digits+))
-                 (if (>= value (expt 10 +decimal-slot-digits+))
-                     (values 1 (- value (expt 10 +decimal-slot-digits+)))
-                     (values 0 value))))
-             ;; Optimization (does not allocate a bignum)
-             '(%addc (x y carry)
-               (declare (optimize speed (space 1)))
-               (let ((cy (- (1- (expt 10 +decimal-slot-digits+)) y)))
-                 (cond
-                   ((< x cy)
-                    (values 0 (+ x y carry)))
-                   ((> x cy)
-                    (values 1 (+ (the decimal-slot (1- (the decimal-slot (- x cy))))
-                                 carry)))
-                   ((= carry 1) (values 1 0))
-                   (t (values 0 (1- (expt 10 +decimal-slot-digits+)))))))))
-     (declare (inline %addc)
-              (ftype (function (decimal-slot decimal-slot bit)
-                               (values bit decimal-slot))
-                     %addc))
-     ,@body))
 
-(defmacro with-%subc (&body body)
-  `(flet
-       (,(if (not (= 64 +decimal-slot-digits+))
-             ;; A different approach from SBCL: this is the way I learned at school :)
-             ;; except that here the carry is negative.
-             '(%subc (x y carry)
-               (declare (optimize speed (space 0)))
-               (floor (- (+ x carry) y) (expt 10 +decimal-slot-digits+)))
-             ;; Optimization (does not allocate a bignum)
-             '(%subc (x y carry)
-               (declare (optimize speed (space 0)))
-               (cond
-                 ((< y x)
-                  (values 0 (- (the decimal-slot (+ x carry))
-                               y)))
-                 ((> y x)
-                  (values -1 (- (the decimal-slot
-                                  (+ carry (expt 10 +decimal-slot-digits+)))
-                                (the decimal-slot
-                                  (- y x)))))
-                 ((= carry -1) (values -1 (1- (expt 10 +decimal-slot-digits+))))
-                 (t (values 0 0))))))
-     (declare (inline %subc)
-              (ftype (function (decimal-slot decimal-slot (integer -1 0))
-                               (values (integer -1 0) decimal-slot))
-                     %subc))
-     ,@body))
+(declaim (inline %addc %subc)
+         (ftype (function (decimal-slot decimal-slot bit)
+                          (values bit decimal-slot))
+                %addc %subc))
+
+(defun %addc (x y carry)
+  (declare (optimize speed))
+  (incf x carry)
+  (let ((cy (- (expt 10 +decimal-slot-digits+) y)))
+    (declare (type decimal-slot cy))
+    (if (< x cy)
+        (values 0 (+ x y))
+        (values 1 (- x cy)))))
 
 (defmacro %addcf (x y carry)            ; (carry,x):=x+y+carry
   `(setf (values ,carry ,x) (%addc ,x ,y ,carry)))
 
+(defun %subc (x y carry)
+  (declare (optimize speed))
+  (incf y carry)
+  (if (<= y x)
+      (values 0 (- x y))
+      (values 1 (- (expt 10 +decimal-slot-digits+)
+                   (the decimal-slot
+                     (- y x))))))
+
 (defmacro %subcf (x y carry)
   `(setf (values ,carry ,x) (%subc ,x ,y ,carry)))
 
-#+sbcl
+#+(or cmucl sbcl)
 (defconstant +R+ (rem (expt 2 (+ +decimal-slot-bits+ +decimal-slot-digits+))
                       (expt 10 +decimal-slot-digits+)))
 
-#+sbcl
+#+(or cmucl sbcl)
 (defconstant +S+ (truncate (expt 2 (+ +decimal-slot-bits+ +decimal-slot-digits+))
                            (expt 10 +decimal-slot-digits+)))
 
@@ -104,14 +55,14 @@
         (%mul-addc (x y d carry) ; d+x*y+carry -> (values new-carry result)
           (truncate (+ (* x y) d carry) (expt 10 +decimal-slot-digits+)))
 
-        ;; Optimization using internal sb-bignum arithmetic. About 5 times faster.
-        #+ (or cmucl sbcl)
+        ;; Optimization using internal bignum arithmetic. About 5 times faster.
+        #+(or cmucl sbcl)
         (%mul-addc (x y d carry)
           (declare (optimize speed space))
           (multiple-value-bind (aux1 digit0)
               (#+sbcl sb-bignum:%multiply-and-add
                #+cmucl bignum:%multiply-and-add
-               x y d carry)
+                 x y d carry)
             (let ((low 0)
                   (high 0)
                   (digit1 0)
@@ -123,14 +74,9 @@
                              high))
               (do ()
                   ((zerop aux1)
-                   #+x86-64
                    (if (>= digit0 (expt 10 +decimal-slot-digits+))
                        (values (1+ digit1) (- digit0 (expt 10 +decimal-slot-digits+)))
-                       (values digit1 digit0))
-                   #-x86-64
-                   (multiple-value-bind (delta digit0)
-                       (truncate digit0 (expt 10 +decimal-slot-digits+))
-                     (values (+ delta digit1) digit0)))
+                       (values digit1 digit0)))
                 (setf (values high low) (truncate (the decimal-slot aux1)
                                                   (expt 2 +decimal-slot-digits+))
                       (values aux1 aux0) (truncate (the unsigned-word
@@ -162,11 +108,11 @@
     (setf (df-infinity-p x) t))
   (def qnan (x signed-p condition)
     (setf (df-not-a-number-p x) t
-          (df-slots x) condition))
+          (df-iexponent x) condition))
   (def snan (x signed-p condition)
     (setf (df-not-a-number-p x) t
           (df-infinity-p x) t
-          (df-slots x) condition)))
+          (df-iexponent x) condition)))
 
 (defmacro def-var-get-and-with ((name default-value) &body body)
   (let ((find- (symbolicate 'find- name))
@@ -300,3 +246,8 @@
                    new-length :initial-element 0))
     (t
      (subseq slots start new-length))))
+
+(declaim (inline whitespace-p))
+
+(defun whitespace-p (char)
+  (member char '(#\Space #\Newline #\Return #\Tab)))

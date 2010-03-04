@@ -63,7 +63,7 @@
 			   :nan x)
     (%count-digits x)))
 
-(defun df-shift (x digits &optional (copy-p t))
+(defun $shift (x digits &optional (copy-p t))
   (if ($finite-p x)
       (multiple-value-bind (dslots digits) (floor digits +decimal-slot-digits+)
 	(let* ((y (if copy-p (copy-df x) x))

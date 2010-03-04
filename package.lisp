@@ -29,5 +29,5 @@
    #:*rounding-mode* #:get-rounding-mode #:find-rounding-mode #:with-rounding-mode
 
    ;; Printing
-   #:get-decimal-printing-format #:find-decimal-printing-format #:*printing-format*
+   #:get-printing-format #:find-printing-format #:*printing-format*
    #:print-decimal #:decimal-to-string #:parse-decimal))

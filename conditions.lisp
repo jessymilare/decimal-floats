@@ -149,7 +149,7 @@
                     (:documentation ,documentation)
                     (:report (lambda (condition stream)
                                (format stream ,(concatenate 'string format-string
-                                                            "~%Operation: ~A; Arguments: ~A")
+                                                            "~%Operation: ~S; Arguments: ~S")
                                        ,@format-vars
                                        (operation-name condition) (operation-arguments condition)))))
                   (defmethod get-condition-bit ((condition (eql ',name)))
@@ -202,7 +202,7 @@
          (restart-case (error condition)
            (return-defined-result ()
              :report (lambda (stream)
-                       (format stream "Return ~A" (operation-defined-result condition)))
+                       (format stream "Return ~S" (operation-defined-result condition)))
              (operation-defined-result condition))
            (return-another-value (value)
              :report "Return another value"

@@ -6,19 +6,18 @@
 (in-package :decimal-floats-tests)
 
 (defun get-line-element (string state position)
-  (let ((quote (case (char string position)
-                 (#\" #\")
-                 (#\' #\')
-                 (t nil)))
-        (length (length string)))
+  (let* ((first-char (char string position))
+         (quote (find first-char '(#\' #\")))
+         (length (length string)))
     (if (and quote (member state '(:operand :result)))
         (do* ((1+previous-end nil (1+ end))
               (end (position quote string :start (1+ position))
-                   (position quote string :start (1+ end)))
+                   (position quote string :start (1+ 1+previous-end)))
               (sub (subseq string (1+ position) end)
-                   (concatenate 'string sub (subseq string 1+previous-end end))))
+                   (concatenate 'string sub
+                                (subseq string 1+previous-end end))))
             ((not (and (< (1+ end) length)
-                       (char= (char string (1+ end)) (char string end))))
+                       (char= quote (char string (1+ end)))))
              (values sub (1+ end))))
         (let* ((end (or (position #\Space string :start position)
                          length))
@@ -73,14 +72,15 @@
 
 (define-parser *testcase-line-parser*
   (:start-symbol line)
-  (:terminals (test-id operation operand -> result condition comment directive end-line))
+  (:terminals (test-id operation operand -> result condition directive))
   (:muffle-conflicts t)
 
   (line
    (test-token #'(lambda (test-token)
                    (cons 'test test-token)))
    (directive-token #'(lambda (directive-token)
-                        (cons 'directive directive-token))))
+                        (cons 'directive directive-token)))
+   nil)
 
   (test-token
    (test-id operation operands -> result conditions #'list))
@@ -118,20 +118,21 @@
                 (destructuring-bind (kind &rest form)
                     (or (parse-with-lexer (make-line-lexer line) *testcase-line-parser*)
                         '(nil))
-                  (ecase kind
-                    (directive
-                     (setf state :toplevel)
-                     (values kind form))
-                    (test              
-                     (let ((terminal
-                            (ecase state
-                              (:toplevel (setf state :test)
-                                         'new-test)
-                              (:test 'test-form))))
-                       (values terminal form)))
-                    (nil
-                     (setf state :toplevel)
-                     (stream-lexer)))))))))
+                  (if kind
+                      (ecase kind
+                        (directive
+                         (setf state :toplevel)
+                         (values kind form))
+                        (test              
+                         (let ((terminal
+                                (ecase state
+                                  (:toplevel (setf state :test)
+                                             'new-test)
+                                  (:test 'test-form))))
+                           (values terminal form))))
+                      (progn
+                        (setf state :toplevel)
+                        (stream-lexer)))))))))
     (when close-p
       (tg:finalize function (curry #'close stream)))
     function))
@@ -140,14 +141,16 @@
   (ecase operation
     ((tosci toeng apply) #'identity)))
 
-(defun getting-conditions (function operands)
-  (let ((conditions nil))
-    (values
-     (handler-bind ((decimal-float-condition
-                     (lambda (c)
-                       (push (class-name (class-of c)) conditions))))
-       (apply function operands))
-     (nreverse conditions))))
+(defmacro apply-getting-conditions (function operands)
+  (with-gensyms (conditions c)
+    `(let ((,conditions nil))
+       (values
+        (handler-bind ((decimal-float-condition
+                        (lambda (,c)
+                          (push (class-name (class-of ,c)) ,conditions)
+                          (invoke-restart 'return-defined-result))))
+          (apply ,function ,operands))
+        (nreverse ,conditions)))))
 
 (defvar *testcase-precision* *precision*)
 (defvar *testcase-rounding-mode* *rounding-mode*)
@@ -173,10 +176,10 @@
                                             "-TESTSUITE"))
          (*testcase-extended* 1)
          (*testcase-clamp* 0))
-    (format t ";;; Processing of file ~A has been started.~%" input)
+    (format t ";;; Processing of file ~S has been started.~%" input)
     (let ((parsed-output (parse-with-lexer (make-file-lexer input)
-                                           *testcase-line-parser*)))
-      (format t ";;; Processing of file ~A has been finished.~%" input)
+                                           *testcase-file-parser*)))
+      (format t ";;; Processing of file ~S has been finished.~%" input)
       (when eval-p
         (format t ";;; Starting evaluation...~%")
         (handler-case (eval parsed-output)
@@ -188,7 +191,7 @@
 
 (define-parser *testcase-file-parser*
   (:start-symbol all-forms)
-  (:terminals (comment directive test))
+  (:terminals (directive new-test test-form))
   (:muffle-conflicts t)
 
   (all-forms
@@ -198,22 +201,23 @@
                '(in-package :decimal-floats-tests)
                `(deftestsuite ,*testcase-testsuite* (,*testcase-parent-testsuite*)
                   ())
-               toplevel-forms))))
+               (delete nil toplevel-forms)))))
     
   (toplevel-forms
    nil
    (toplevel-form toplevel-forms #'cons))
     
   (toplevel-form
-   (directive #'(lambda (&rest args)
-                  (apply #'change-directive args)))
-   (new-test testforms #'(lambda (first-test other-tests)
+   (directive #'(lambda (args)
+                  (apply #'change-directive args)
+                  nil))
+   (new-test test-forms #'(lambda (first-test other-tests)
                            ;; Argh! Ugly workaround.
                            (create-test first-test other-tests))))
 
-  (testforms
+  (test-forms
    nil
-   (testform testforms #'cons)))
+   (test-form test-forms #'cons)))
 
 (defun change-directive (directive value)
   (case directive
@@ -228,15 +232,15 @@
     (version
      (if *testcase-version*
          (warn "New occurrence of version directive found, using the first one:~%~
-version being used: ~A, ignored version: ~A."
+version being used: ~S, ignored version: ~S."
                *testcase-version* value)
          (setf *testcase-version* value)))
     (extended (setf *testcase-extended* (parse-integer value)))
     (clamp (setf *testcase-clamp* (parse-integer value)))
     (dectest
-     (format t ";;; Directive dectest encountered. Processing file ~A." value)
+     (format t ";;; Directive dectest encountered. Processing file ~S." value)
      (convert-testcase-file (make-pathname :name value :defaults *testcase-filename*)))
-    (t (warn "Unknown directive found during testcase parsing: ~A." directive))))
+    (t (warn "Unknown directive found during testcase parsing: ~S." directive))))
 
 (defun create-test (first-test other-tests)
   (macrolet ((with-directive-tests ((form skipping-what) &body all-tests)
@@ -251,44 +255,46 @@ version being used: ~A, ignored version: ~A."
                                                   ,directives))))
                                 all-tests)
                       (if ,directives
-                          (warn "Skipping ~A due to the ~
-~[~;value of this~:;values of these~]~ directive~:p: ~
-~%~{~{~A: ~A~}~^; ~}.~%Skipped form:~%~A"
-                                ,skipping-what
-                                (length ,directives)
-                                ,directives
-                                ,form)
+                          (warn "Skipping ~S due to the ~
+~[~;value of this~:;values of these~] directive~:p: ~
+~%~{~{~S: ~S~}~^; ~}.~%Skipped form:~%~S"
+                                ,skipping-what (length ,directives)
+                                ,directives ,form)
                           ,form))))))
     (let* ((first-test-name (car first-test))
            (last-test-name (and other-tests (caar (last other-tests))))
-           (ctest-name (symbolicate *testcase-testsuite*
-                                    (if last-test-name "-TESTS-" "-TEST-")
+           (ctest-name (symbolicate *testcase-testsuite* "-"
                                     (string-upcase first-test-name)
                                     (if last-test-name "-TO-" "")
                                     (string-upcase (or last-test-name ""))))
+           (inner-forms
+            (delete nil
+                    (mapcar
+                     (curry #'apply
+                            (lambda (test-id operation operands -> result conditions)
+                              (declare (ignore ->))
+                              ;; FIXME: no maxexponent or minexponent
+                              ;; in the standard testcase files are supported by this implementation,
+                              ;; so, for now, there is no way to simulate overflow or underflow tests.
+                              (with-directive-tests
+                                  (`(test-comparison ',test-id ',operation
+                                                     ',operands ',result ',conditions)
+                                    "test")
+                                ((and (/= +maximum-exponent+ *testcase-maxexponent*)
+                                      (intersection '(decimal-overflow clamped) conditions))
+                                 maxexponent)
+                                ((and (/= +minimum-exponent+ *testcase-minexponent*)
+                                      (intersection '(decimal-subnormal decimal-underflow clamped)
+                                                    conditions))
+                                 minexponent))))
+                     (cons first-test other-tests))))
            (ctest-form
-            `(addtest (,*testcase-testsuite*)
-               ,ctest-name
-               (let ((*precision* ,*testcase-precision*)
-                     (*rounding-mode* ,(find-rounding-mode *testcase-rounding-mode*)))
-                 ,@(mapcar
-                    (lambda (test-id operation operands -> result conditions)
-                      (declare (ignore ->))
-                      ;; FIXME: no maxexponent or minexponent
-                      ;; in the standard testcase files are supported by this implementation,
-                      ;; so, for now, there is no way to simulate overflow or underflow tests.
-                      (with-directive-tests
-                          (`(test-comparison ',test-id ',operation
-                                             ',operands ',result ',conditions)
-                            "test")
-                        ((and (/= +maximum-exponent+ *testcase-maxexponent*)
-                              (member 'decimal-overflow conditions))
-                         maxexponent)
-                        ((and (/= +minimum-exponent+ *testcase-minexponent*)
-                              (intersection '(decimal-subnormal decimal-underflow)
-                                            conditions))
-                         minexponent)))
-                    (cons first-test other-tests))))))
+            (when inner-forms
+              `(addtest (,*testcase-testsuite*)
+                 ,ctest-name
+                 (let ((*precision* ,*testcase-precision*)
+                       (*rounding-mode* (find-rounding-mode ,*testcase-rounding-mode*)))
+                   ,@inner-forms)))))
       (with-directive-tests (ctest-form "tests")
         ((/= 1 *testcase-extended*) extended)
         ((/= 0 *testcase-clamp*) clamp)
@@ -301,11 +307,9 @@ version being used: ~A, ignored version: ~A."
 
 (defun test-comparison (test-id operation operands result conditions)
   (multiple-value-bind (new-result new-conditions)
-      (getting-conditions
+      (apply-getting-conditions
        (get-operation operation)
-       (mapcar (rcurry #'parse-decimal
-                       :round-p (member operation '(tosci toeng apply))
-                       :nan-diagnostic-p nil)
+       (mapcar (rcurry #'parse-decimal :round-p (member operation '(tosci toeng apply)))
                operands))
     (ensure-same
      (decimal-to-string new-result
@@ -316,12 +320,12 @@ version being used: ~A, ignored version: ~A."
      result
      :test #'equal
      :ignore-multiple-values? t
-     :report (format nil "Returned value mismatch in test ~A, file ~A."
-                     test-id *testcase-filename*))
+     :report (format nil "Returned value mismatch in test ~S."
+                     test-id))
     (ensure-same
      new-conditions conditions
      :test #'equal
      :ignore-multiple-values? t
-     :report (format nil "Signalled conditions mismatch in test ~A, file ~A."
-                     test-id *testcase-filename*))
+     :report (format nil "Signalled conditions mismatch in test ~S."
+                     test-id))
     new-result))
