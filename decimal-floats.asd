@@ -1,6 +1,6 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-;;; Copyright (c) 2009 Gustavo Henrique Milaré
+;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
 (defpackage :decimal-floats-system
@@ -14,7 +14,8 @@
   :maintainer "Gustavo Henrique Milaré"
   :author "Gustavo Henrique Milaré"
   :licence "MIT style"
-  :description "Implements decimal arithmetics"
+  :description "Implements decimal arithmetics as specified by standard
+ http://speleotrove.com/decimal/"
   :components ((:file "package")
 	       (:file "structure" :depends-on ("package"))
                (:file "utils" :depends-on ("structure"))

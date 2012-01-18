@@ -1,102 +1,105 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-;;; Copyright (c) 2009 Gustavo Henrique Milaré
+;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
 (in-package :decimal-floats)
 
 ;;; Inpired by SBCL's sb-bignum source code.
 
-(defconstant +binary-carry-value+ (rem (expt 2 +decimal-slot-bits+)
-                                       (expt 10 +decimal-slot-digits+)))
+;;; It's ugly defining these as macros, but it increases performance a lot
 
-
-(declaim (inline %addc %subc)
-         (ftype (function (decimal-slot decimal-slot bit)
-                          (values bit decimal-slot))
-                %addc %subc))
-
-(defun %addc (x y carry)
-  (declare (optimize speed))
-  (incf x carry)
-  (let ((cy (- (expt 10 +decimal-slot-digits+) y)))
-    (declare (type decimal-slot cy))
-    (if (< x cy)
-        (values 0 (+ x y))
-        (values 1 (- x cy)))))
+(defmacro %addc (x y carry)
+  (once-only (x y carry)
+    (with-gensyms (cy)
+      ;; Avoid overflows of fixnums and is as fast as
+      ;; (truncate (+ x y carry) +maximum-decimal-slot+)
+      ;; on SBCL
+      `(let ((,x (+ ,x ,carry))
+             (,cy (- +maximum-decimal-slot+ ,y)))
+         (declare (type fixnum ,x ,cy)
+                  (type decimal-slot ,y)
+                  (type bit ,carry)
+                  (optimize speed))
+         (if (< ,x ,cy)
+             (values 0 (the decimal-slot (+ ,x ,y)))
+             (values 1 (the decimal-slot (- ,x ,cy))))))))
 
 (defmacro %addcf (x y carry)            ; (carry,x):=x+y+carry
   `(setf (values ,carry ,x) (%addc ,x ,y ,carry)))
 
 (defun %subc (x y carry)
-  (declare (optimize speed))
-  (incf y carry)
-  (if (<= y x)
-      (values 0 (- x y))
-      (values 1 (- (expt 10 +decimal-slot-digits+)
-                   (the decimal-slot
-                     (- y x))))))
+  (once-only (x y carry)
+    ;; Avoids overflow of fixnums and is as fast as
+    ;; (truncate (- x y carry) +maximum-decimal-slot+)
+    ;; on SBCL
+    ;; The carry has negative sign
+    `(let ((,y (+ ,y ,carry)))
+       (declare (type fixnum ,y)
+                (type decimal-slot ,x)
+                (type bit ,carry)
+                (optimize speed))
+       (if (<= ,y ,x)
+           (values 0 (- ,x ,y))
+           (values 1 (- +maximum-decimal-slot+
+                        (the decimal-slot
+                          (- ,y ,x))))))))
 
 (defmacro %subcf (x y carry)
   `(setf (values ,carry ,x) (%subc ,x ,y ,carry)))
 
-#+(or cmucl sbcl)
-(defconstant +R+ (rem (expt 2 (+ +decimal-slot-bits+ +decimal-slot-digits+))
-                      (expt 10 +decimal-slot-digits+)))
+(defconstant +half-decimal-digits+ (/ +decimal-slot-digits+ 2))
 
-#+(or cmucl sbcl)
-(defconstant +S+ (truncate (expt 2 (+ +decimal-slot-bits+ +decimal-slot-digits+))
-                           (expt 10 +decimal-slot-digits+)))
+(check-type +half-decimal-digits+ 'fixnum)
 
-(defmacro with-%mul-addc (&body body)
-  `(flet
-       (;; Default implementation.
-        #-(or cmucl sbcl)
-        (%mul-addc (x y d carry) ; d+x*y+carry -> (values new-carry result)
-          (truncate (+ (* x y) d carry) (expt 10 +decimal-slot-digits+)))
+(defconstant +half-maximum-slot+ (expt 10 +half-decimal-digits+))
 
-        ;; Optimization using internal bignum arithmetic. About 5 times faster.
-        #+(or cmucl sbcl)
-        (%mul-addc (x y d carry)
-          (declare (optimize speed space))
-          (multiple-value-bind (aux1 digit0)
-              (#+sbcl sb-bignum:%multiply-and-add
-               #+cmucl bignum:%multiply-and-add
-                 x y d carry)
-            (let ((low 0)
-                  (high 0)
-                  (digit1 0)
-                  (aux0 0))
-              (declare (type unsigned-word digit0)
-                       (type decimal-slot digit1 aux1 aux0)
-                       (type (unsigned-byte #.(- +decimal-slot-bits+
-                                                 +decimal-slot-digits+))
-                             high))
-              (do ()
-                  ((zerop aux1)
-                   (if (>= digit0 (expt 10 +decimal-slot-digits+))
-                       (values (1+ digit1) (- digit0 (expt 10 +decimal-slot-digits+)))
-                       (values digit1 digit0)))
-                (setf (values high low) (truncate (the decimal-slot aux1)
-                                                  (expt 2 +decimal-slot-digits+))
-                      (values aux1 aux0) (truncate (the unsigned-word
-                                                     (ash low (- +decimal-slot-bits+
-                                                                 +decimal-slot-digits+)))
-                                                   (expt 5 +decimal-slot-digits+))
-                      digit1 (+ digit1 aux1)
-                      digit1 (+ digit1 (the decimal-slot (* high +S+)))
-                      (values aux1 digit0)
-                      (#+sbcl sb-bignum:%multiply-and-add
-                       #+cmucl bignum:%multiply-and-add
-                       high +R+ digit0 (ash aux0 +decimal-slot-digits+))))))))
-     (declare (inline %mul-addc)
-              (ftype (function (decimal-slot decimal-slot decimal-slot decimal-slot)
-                               (values decimal-slot decimal-slot))
-                     %mul-addc))
-     ,@body))
+(defmacro %mul-addc (x y d c)
+  (once-only (x y d c)
+    (with-gensyms (x0 x1 y0 y1 low high carry a0 a1)
+      ;; Avoids overflow of fixnums, equivalent to
+      ;; (truncate (+ (* x y) d c) +maximum-decimal-slot+)
+      (declare (ignorable carry))
+      `(locally (declare (type decimal-slot ,x ,y ,d ,c)
+                         (optimize speed))
+         (multiple-value-bind (,x1 ,x0) (truncate ,x +half-maximum-slot+)  
+           (multiple-value-bind (,y1 ,y0) (truncate ,y +half-maximum-slot+)
+             (let ((,a0 0) (,a1 0)
+                   (,high (* ,x1 ,y1)) (,low 0))
+               (declare (type (mod ,+half-maximum-slot+) ,a0 ,a1)
+                        (type decimal-slot ,high))
+               #-(or sbcl cmucl)
+               (let ((,carry 0))
+                 (declare (type bit ,carry)
+                          (type decimal-slot ,low))
+                 (setf (values ,carry ,low) (%addc ,d ,c 0)
+                       ,high (+ ,high ,carry)
+                       (values ,carry ,low) (%addc ,low (* ,x0 ,y0) 0)
+                       ,high (+ ,high ,carry)
+                       (values ,a1 ,a0)  (truncate (* ,x0 ,y1) +half-maximum-slot+)
+                       (values ,carry ,low) (%addc ,low (* ,a0 +half-maximum-slot+) 0)
+                       ,high (+ ,high ,carry ,a1)
+                       (values ,a1 ,a0)  (truncate (* ,x1 ,y0) +half-maximum-slot+)
+                       (values ,carry ,low) (%addc ,low (* ,a0 +half-maximum-slot+) 0))
+                 (values (+ ,high ,carry ,a1)
+                         ,low))
+               ;; This version assumes the compiler knows how to sum fixnums
+               ;; without using bignums; about 10% faster then above
+               #+(or sbcl cmucl)
+               (progn
+                 (setf ,low  (+ ,d ,c (* ,x0 ,y0))
+                       (values ,a1 ,a0)  (truncate (* ,x0 ,y1) +half-maximum-slot+)
+                       ,low (+ ,low (* ,a0 +half-maximum-slot+))
+                       ,high (+ ,high ,a1)
+                       (values ,a1 ,a0)  (truncate (* ,x1 ,y0) +half-maximum-slot+)
+                       ,low (+ ,low (* ,a0 +half-maximum-slot+))
+                       ,high (+ ,high ,a1)
+                       (values ,a1 ,low) (truncate ,low +maximum-decimal-slot+))
+                 (values (+ ,high ,a1)
+                         ,low)))))))))
 
 (defmacro %mul-addcf (x y d carry)       ; (carry,d):=d+x*y+carry)
-  `(setf (values ,carry ,d) (mul-addc ,d ,x ,y ,carry)))
+  `(setf (values ,carry ,d) (%mul-addc ,d ,x ,y ,carry)))
 
 (macrolet ((def (name (var signed-p &rest args) &body body)
 	     `(defun ,(symbolicate "MAKE-" name) (,signed-p ,@args)
@@ -126,7 +129,7 @@
         (defvar ,var (,find- ,default-value)
           ,@(if doc (list doc)))
         (defun ,get- (&optional (,name ,var))
-          ,(format nil "Fetches the value of ~:@(~A~) and parses it to a better format.
+          ,(format nil "Fetches the value of ~:@(~A~) and parses it into a better format.
  See documentation for ~:@(~A~) and ~:@(~A~)." var var find-)
           ,@body)
         (defsetf ,get- (&optional (,name ',var)) (,value)
@@ -135,13 +138,15 @@
                (setf ,,name (,',find- ,,value))
                ,,value)))
         (defmacro ,with- ((,value) &body ,body-var)
-          ,(format nil "Transforms the ~:@(~A~) given into an internal format (using the function ~:@(~A~))
+          ,(format nil "Transforms the ~:@(~A~) given into an internal format~
+ (using the function ~:@(~A~))
  and locally binds the returned value to ~:@(~A~).
  See documentation for ~:@(~A~) and ~:@(~A~)." value find- var var find-)
           `(let ((,',var (,',find- ,,value)))
              ,@,body-var))))))
 
-(defmacro def-customize-function ((name default-value) lambda-list variable-doc &rest defaults)
+(defmacro def-customize-function ((name default-value) lambda-list variable-doc
+                                  &rest defaults)
   (with-gensyms (key)
     (let (declaration)
       `(progn
@@ -166,16 +171,13 @@
   (read))
 
 (defmacro with-inf-nan-handler ((var &key
-				     after
-				     before
+				     after before
                                      (around '(call-next-handler))
-				     inf-before
-				     inf-after
+				     inf-before inf-after
 				     (inf-around '(call-next-handler))
 				     (+infinity nil +infinity-p)
 				     (-infinity nil -infinity-p)
-				     nan-before
-				     nan-after
+				     nan-before nan-after
 				     (nan-around '(call-next-handler))
 				     (qnan nil qnan-p)
 				     (snan nil snan-p))
@@ -193,7 +195,8 @@
                                     ,nan-before
                                     ,(if (or snan-p qnan-p)
                                          `(cond
-                                            ;; in a NaN, this flag differs signaling NaN from quiet NaN
+                                            ;; in a NaN, this flag differs
+                                            ;; signaling NaN from quiet NaN
                                             ((df-infinity-p ,var)
                                              ,snan)
                                             (t
@@ -232,20 +235,7 @@
         (loop for i from (max start 0) below (min (length slots) end)
            do
              (setf (aref new-slots (- i start)) (aref slots i)))
-        new-slots))
-  #+nil
-  (cond
-    ((zerop delta)
-     (if (plusp start)
-         (subseq slots start)
-         slots))
-    ((plusp delta)
-     (adjust-array (if (plusp start)
-                       (subseq slots start)
-                       slots)
-                   new-length :initial-element 0))
-    (t
-     (subseq slots start new-length))))
+        new-slots)))
 
 (declaim (inline whitespace-p))
 

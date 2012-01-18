@@ -1,39 +1,39 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-;;; Copyright (c) 2009 Gustavo Henrique Milaré
+;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
 (in-package :decimal-floats)
 
+(defconstant +base+ 10)
+
 (locally
     (declare #+sbcl (optimize sb-ext:inhibit-warnings))
-  (defconstant +word-bits+
-    (or
-     #+sbcl sb-vm:n-word-bits
-     #+(or x86-64 ppc64 ia64) 64
-     #+(or x86 ppc sparc alpha mips hppa) 32
-     ;; default: guesses the architecture
-     (if (> most-positive-fixnum (expt 2 32))
-         64
-         32))))
+  (defconstant +decimal-slot-digits+
+   ;; 64-bit clisp doesn't seem to support fixnums arrays
+   (or #+(and clisp (or x86-64 ppc64 ia64)) 32
+       (let ((val (truncate (log most-positive-fixnum
+                                 10))))
+         (if (and (evenp val) (typep (expt 10 val) 'fixnum))
+             val
+             (1- val))))))
 
-(defconstant +decimal-slot-bits+
-  (or #+clisp 32 ; clisp doesn't seem to support (unsigned-byte 64) arrays
-      +word-bits+))
+(defconstant +maximum-decimal-slot+
+  (expt 10 +decimal-slot-digits+))
 
-(defconstant +decimal-slot-digits+
-  (truncate (log (expt 2 +decimal-slot-bits+) 10)))
+;;; Number of bits needed to store one number from 0 to +decimal-slot-digits+ - 1
+(defconstant +num-of-digits-bits+ (integer-length (1- +decimal-slot-digits+)))
 
-(defconstant +num-of-digits-bits+ (integer-length (1- +decimal-slot-digits+))
-  "Number of bits needed to store one number from 0 to +decimal-slot-digits+ - 1.")
+(defconstant +decimal-slot-bits+ (integer-length (1- +maximum-decimal-slot+)))
 
-;;; === (defconstant +internal-e-max+ most-positive-fixnum) most of the times
+;;; this and the one below must fit in a fixnum
 (defconstant +internal-e-max+
-  (min most-positive-fixnum (- 1 most-negative-fixnum))) ; this and the one below must fit in a fixnum
+  ;; equals most-positive-fixnum in most cases
+  (min most-positive-fixnum (- 1 most-negative-fixnum)))
 
-;;; === (defconstant +internal-e-min+ most-negative-fixnum) most of the times
 (defconstant +internal-e-min+
-  (- 1 +internal-e-max+))
+  ;; equals most-negative-fixnum in most cases
+  (- -1 +internal-e-max+))
 
 (defconstant +maximum-exponent+
   (+ (* +internal-e-max+ +decimal-slot-digits+) ; quantity stored in df-iexponent
@@ -42,7 +42,9 @@
  exponent of any number when it is in scientific notation.
  This is the constant Emax of the specification.")
 
-(defconstant +minimum-exponent+ (- 1 +maximum-exponent+)
+(defconstant +minimum-exponent+
+  ;; equals (- -1 +maximum-exponent)
+  (* +internal-e-min+ +decimal-slot-digits+)
   "Minimum value of the 'adjusted exponent' for any normal number,
  i.e. the minimum exponent of a normal number when it is in exponencial notation.
  A subnormal number might have a smaller adjusted exponent.
@@ -52,20 +54,17 @@
   (min (* +decimal-slot-digits+ (floor (1- array-dimension-limit) 2)) ; ideal value
        most-positive-fixnum              ; precision must always be a fixnum
        (truncate +maximum-exponent+ 10)) ; maximum recommended by spec divided by 2.
-  ;; The constant +maximum-exponent+ is already very big (compared to IEEE 754 decimal arithmetics),
-  ;; so this restriction shouldn't be even noticed (specially for 64-bit systems, since a precision 
-  ;; this big will can't be used unless you have 2^65 or more bytes of RAM).
+  ;; The constant +maximum-exponent+ is already very big (compared to IEEE 754 decimal
+  ;; arithmetics), so this restriction shouldn't be even noticed (specially for 64-bit
+  ;; systems, since a precision this big can't be used unless you have 2^65
+  ;; or more bytes of RAM).
   "Maximum value allowed for *PRECISION*, or maximum length of any number, in digits.")
 
 (defconstant +minimum-precision+ 1
-  "Minimum value allowed for *PRECISION*.
-This variable is just for documentation.")
-
-(deftype unsigned-word ()
-  `(unsigned-byte ,+word-bits+))
+  "Minimum value allowed for *PRECISION*, just for documentation.")
 
 (deftype decimal-slot ()
-  `(mod ,(expt 10 +decimal-slot-digits+)))
+  `(mod ,+maximum-decimal-slot+))
 
 (deftype slot-array (&optional (length '*))
   `(simple-array decimal-slot (,length)))
@@ -77,20 +76,22 @@ This variable is just for documentation.")
 	     (:conc-name df-)
 	     (:constructor %make-df (slots iexponent))
 	     (:copier copy-df))
-  (extra 0 :type #.`(unsigned-byte ,(+ 4 (* 2 +num-of-digits-bits+))))
+  (extra 0 :type #.`(unsigned-byte ,(+ 4 +num-of-digits-bits+)))
   (slots 1 :type (or null (simple-array decimal-slot)))
   (iexponent 0 :type (or fixnum condition)))
 
 (macrolet ((def-field (accessor start end &optional doc)
-	     `(progn (defun ,accessor (x)
-		       ,@(if doc (list doc))
-		       (ldb (byte (- ,end ,start) ,start) (df-extra x)))
+	     `(progn (declaim (inline ,accessor (setf ,accessor)))
+                     (defun ,accessor (x)
+                       ,@(if doc (list doc))
+                       (ldb (byte (- ,end ,start) ,start) (df-extra x)))
 		     (defun (setf ,accessor) (value x)
 		       ,@(if doc (list doc))
 		       (setf (ldb (byte (- ,end ,start) ,start) (df-extra x))
 			     value))))
 	   (def-bitp (accessor bit &optional doc)
-	     `(progn (defun ,accessor (x)
+	     `(progn (declaim (inline ,accessor (setf ,accessor)))
+                     (defun ,accessor (x)
 		       ,@(if doc (list doc))
 		       (logbitp ,bit (df-extra x)))
 		     (defun (setf ,accessor) (value x)
@@ -104,7 +105,7 @@ This variable is just for documentation.")
   ;; About first-slot-last-digit and last-slot-first-digit:
 
   ;; We store the slots (one slot is a digit in base 10 ^ +decimal-slot-digits+)
-  ;; in little-endian order, and, therefore, the last slot is the most significant one.
+  ;; in little-endian order.
 
   ;; The first (decimal) digit of the last slot is the position
   ;; (counting from the right, starting in 0)
@@ -120,6 +121,8 @@ This variable is just for documentation.")
   ;; The digits of the first slot which are more significant
   ;; than lsfd are also unused and meant to be always zero.
   (def-field df-first-slot-last-digit 4 (+ 4 +num-of-digits-bits+))
+
+  #+nil
   (def-field df-last-slot-first-digit  (+ 4 +num-of-digits-bits+)
 	     (+ 4 (* 2 +num-of-digits-bits+))))
 
@@ -128,27 +131,38 @@ This variable is just for documentation.")
              (let ((%name (symbolicate "%DF-" name))
                    (df-name (symbolicate "DF-" name)))
                `(progn
+                  (declaim (inline ,%name ,df-name))
                   (defun ,%name ,(mapcar #'first vars)
                     ,@body)
                   (defun ,df-name (,x)
-                    (,%name ,@(mapcar #'second vars)))))))
+                    (let* ,vars
+                      (,%name ,@(mapcar #'first vars))))))))
   (def zerop (x (iexponent (df-iexponent x))
-                (slots (df-slots x)))
-    (if (= iexponent +minimum-exponent+)
+                (slots (df-slots x))
+                (length (length slots)))
+    (if (= iexponent +internal-e-min+)
         (every #'zerop slots)
-        (zerop (aref slots (1- (length slots))))))
+        (zerop (aref slots (1- length)))))
+
+  (def last-slot-first-digit (x (fsld (df-first-slot-last-digit x))
+                                (slots (df-slots x))
+                                (length (length slots)))
+    (if (= 1 length)
+        (max fsld (last-digit-of-slot (aref slots 0)))
+        (last-digit-of-slot (aref slots (1- length)))))
 
   #+nil
   (def subnormal-p (x (iexponent (df-iexponent x))
-                      (slots (df-slots x)))
+                      (slots (df-slots x))
+                      (length (length slots)))
     (and (= iexponent +minimum-exponent+)
-         (zerop (aref slots (1- (length slots))))))
+         (zerop (aref slots (1- length)))))
 
   (def finite-p (x (extra (df-extra x)))
-    (zerop (ldb (byte 2 1) extra)))
+    (not (logtest #b0110 extra)))
 
   (def normal-p (x (extra (df-extra x)))
-    (zerop (ldb (byte 3 1) extra)))
+    (not (logtest #b1110 extra)))
 
   (def count-digits (x (length (length (df-slots x)))
                        (fsld (df-first-slot-last-digit x))
@@ -175,7 +189,7 @@ This variable is just for documentation.")
 (define-constant +expt-10+
     ;; Powers of 10 for fast reference.
     (let ((array (make-array (1+ +decimal-slot-digits+)
-			     :element-type `(integer 0 ,(expt 10 +decimal-slot-digits+)))))
+			     :element-type `(integer 0 ,+maximum-decimal-slot+))))
       (loop for i from 0 to +decimal-slot-digits+
 	 for pow = 1 then (* pow 10) do
 	   (setf (aref array i) pow))
@@ -265,13 +279,11 @@ This variable is just for documentation.")
 
 (defun make-decimal-float (iexponent slots &key (negative-p nil) (infinity-p nil)
                            (not-a-number-p nil) (subnormal-p nil)
-                           (first-slot-last-digit 0)
-                           (last-slot-first-digit 0))
+                           (first-slot-last-digit 0))
   (let ((x (%make-df slots iexponent)))
     (setf (df-negative-p x) negative-p
           (df-infinity-p x) infinity-p
           (df-not-a-number-p x) not-a-number-p
           (df-subnormal-p x) subnormal-p
-          (df-first-slot-last-digit x) first-slot-last-digit
-          (df-last-slot-first-digit x) last-slot-first-digit)
+          (df-first-slot-last-digit x) first-slot-last-digit)
     x))

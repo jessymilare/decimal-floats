@@ -1,0 +1,7 @@
+*.fasl
+*.FASL
+*.x86f
+*.X86F
+*.fas
+*.FAS
+*~
