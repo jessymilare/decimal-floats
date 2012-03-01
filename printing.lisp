@@ -190,7 +190,7 @@ funtion GET-PRINTING-FORMAT."
 (defun parse-decimal (string &key (start 0) (end (length string)) (round-p t)
                       (trim-spaces t))
   (with-operation (parse-decimal condition (subseq string start (or end (length string))))
-    ((decimal-conversion-syntax (make-nan nil nil)))
+      ((decimal-conversion-syntax (make-nan nil nil)))
     (when trim-spaces
       (setf start (or (position-if (complement #'whitespace-p)
                                    string :start start :end end)
@@ -225,12 +225,15 @@ funtion GET-PRINTING-FORMAT."
                                           :start position :end end))
                          (decimal-error-cond (nil :return-p t)
                            decimal-conversion-syntax))
-                       (multiple-value-bind (iexponent slots fsld lsfd)
-                           (%parse-decimal string position end)
-                         (declare (ignore iexponent))
-                         (setf (df-slots nan) slots
-                               (df-first-slot-last-digit nan) fsld
-                               (df-last-slot-first-digit nan) lsfd)))
+                       (let ((position (position #\0 string :start position :end end
+                                                 :test-not #'char=)))
+                         (when position
+                           (multiple-value-bind (iexponent slots fsld lsfd)
+                               (%parse-decimal string position end)
+                             (declare (ignore iexponent))
+                             (setf (df-slots nan) slots
+                                   (df-first-slot-last-digit nan) fsld
+                                   (df-last-slot-first-digit nan) lsfd)))))
                      nan))
                   ((or (string-equal "inf" string :start2 position :end2 end)
                        (string-equal "infinity" string :start2 position :end2 end))
@@ -263,7 +266,8 @@ funtion GET-PRINTING-FORMAT."
                                         (or (digit-char-p char)
                                             (member char '(#\+ #\-))))
                                       (digit-char-p (char string (1- end))))
-                           ;; parse-integer accepts leading and trailing whitespaces
+                           ;; PARSE-INTEGER accepts leading and trailing whitespaces
+                           ;; while %PARSE-DECIMAL doesn't
                            (decimal-error-cond (nil :return-p t)
                              decimal-conversion-syntax))
                          (handler-case (parse-integer string :start (1+ e-position)
@@ -271,6 +275,7 @@ funtion GET-PRINTING-FORMAT."
                            (parse-error ()
                              (decimal-error-cond (nil :return-p t)
                                decimal-conversion-syntax))))
+                        ;; There is an "E" but no exponent after it
                         (t (decimal-error-cond (nil :return-p t)
                              decimal-conversion-syntax)))))
     (unless (plusp digits)
