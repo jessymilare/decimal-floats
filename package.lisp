@@ -1,15 +1,15 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-;;; Copyright (c) 2009 Gustavo Henrique Milaré
+;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
 (defpackage :decimal-floats
   (:use :cl :alexandria)
   (:export
    ;; Constants
-   #:+maximum-exponent+ #:+minimum-exponent+ #:+maximum-precision+ 
+   #:+maximum-exponent+ #:+minimum-exponent+ #:+maximum-precision+ #:+minimum-precision+
    ;; Structure
-   #:decimal-float
+   #:decimal-float #:exponent #:adjusted-exponent
 
    ;; Conditions
    #:decimal-float-condition
@@ -22,15 +22,15 @@
    #:operation-name #:operation-defined-result #:operation-arguments
    #:return-defined-result #:return-another-value
 
-   #:*condition-flags* #:*condition-signallers*
-   #:get-condition-flags #:get-condition-signallers #:find-condition-flags
-   #:find-condition-signallers
-   #:with-condition-flags #:with-condition-flags* #:with-condition-signallers
+   #:*condition-flags* #:*condition-trap-enablers*
+   #:get-condition-flags #:get-condition-trap-enablers #:find-condition-flags
+   #:find-condition-trap-enablers
+   #:with-condition-flags #:with-condition-flags* #:with-condition-trap-enablers
 
    ;; Rounding
-   #:*precision*
-   #:*rounding-mode* #:get-rounding-mode #:find-rounding-mode #:with-rounding-mode
+   #:*precision* #:precision
+   #:*rounding-mode*
 
    ;; Printing
-   #:get-printing-format #:find-printing-format #:*printing-format*
+   #:*printing-format*
    #:print-decimal #:decimal-to-string #:parse-decimal))

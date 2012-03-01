@@ -1,37 +1,40 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-;;; Copyright (c) 2009 Gustavo Henrique Milaré
+;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
 (in-package :decimal-floats)
 
-(declaim (type function *printing-format*))
+(declaim (type (or (member :scientific :engineering :exponencia :signed-digits
+                           :digits :unsigned-digits :signed-digits+exponent
+                           :digits+exponent :unsigned-digits+exponent)
+                   function) *printing-format*))
 
-(def-customize-function (printing-format :scientific)
-    (exponent adj-exponent digits)
-  ;; Variable doc
-  "The printing format that is used in case none has been specifyied.
- A valid printing format should be a function; use FIND-PRINTING-FORMAT
- to get most common printing formats.
- The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
- *PRINT-READABLY* is true (some formats might break readability)."
+(defvar *printing-format* :scientific
+  "The printing format to be used. It must either be a keyword or a function.
+Accepted keywords are :SCIENTIFIC, :ENGINEERING, :EXPONENCIAL :SIGNED-DIGITS,
+:DIGITS, :UNSIGNED-DIGITS, :SIGNED-DIGITS+EXPONENT, :DIGITS+EXPONENT, and
+:UNSIGNED-DIGITS+EXPONENT.
 
-  ;; Internalize doc
-  "This function takes a keyword and returns the corresponding printing format function.
- Accepted keywords are :scientific, :engineering,
- :exponencial :signed-digits, :digits, :unsigned-digits,
- :signed-digits+exponent, :digits+exponent, and :unsigned-digits+exponent.
+Scientific format: http://speleotrove.com/decimal/daconvs.html#reftostr
+Engineering format: http://speleotrove.com/decimal/daconvs.html#reftoeng
 
- Scientific format: http://speleotrove.com/decimal/daconvs.html#reftostr
- Engineering format: http://speleotrove.com/decimal/daconvs.html#reftoeng
+You can create a custom printing format by using a function.
+Information on how to create a printing format function is in the file
+\"doc/printing-format\".
 
- Information on how to create a printing format function is in the file \"doc/printing-format\".
+Note that some formats may break readability (i.e. the number that is read back
+may not be the same). If readability is needed, use one of the following formats:
+:scientific, :engineering, :exponencial, :signed-digits+exponent or
+:digits+exponent
 
- Please note that some formats may break readability (i.e. the number that is read back
- may not be the same). If readability is needed, use one of the following formats:
- :scientific, :engineering, :exponencial, :signed-digits+exponent and :digits+exponent"
-  (declare (integer exponent adj-exponent) ; can't do any better
-           (fixnum digits))
+The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
+*PRINT-READABLY* is true.")
+
+(def-customize-function find-printing-format (exponent adj-exponent digits)
+  (declare (type adjusted-exponent adj-exponent) ; can't do any better
+           (type exponent exponent)
+           (type fixnum digits)) ; omit the '-' sign?
   (:scientific (if (and (<= exponent 0)
                         (<= -6 adj-exponent))
                    (values nil
@@ -57,82 +60,90 @@
                               (+ 1 adjust)
                               :exponent))))
   (:exponencial (values adj-exponent 1))
-  (:signed-digits (values nil nil t nil))
-  (:digits (values nil nil nil nil))
+  (:signed-digits (values nil nil t))
+  (:digits (values))
   (:unsigned-digits (values nil nil nil t))
-  (:signed-digits+exponent (values exponent nil :coefficient nil))
+  (:signed-digits+exponent (values exponent nil :coefficient))
   (:digits+exponent (values exponent nil nil nil))
   (:unsigned-digits+exponent (values exponent nil nil t)))
 
-(declaim (type function *printing-format*))
+(defun decimal-macro-character (stream char depth)
+  (declare (ignore char depth))
+  (let ((string (with-output-to-string (output)
+                  (loop for char = (read-char stream nil #\  stream)
+                     while (or (alphanumericp char)
+                               (member char '(#\+ #\- #\.)))
+                     do (write-char char output)))))
+    (with-condition-trap-enablers ('(decimal-invalid-operation))
+      (parse-decimal string :round-p nil))))
+
+(set-dispatch-macro-character #\# #\$ #'decimal-dispatch-macro)
 
 (defmethod print-object ((x decimal-float) stream)
   (write-string "#$" stream)
   (print-decimal x stream
                  :format
                  (if *print-readably*
-                     (get-printing-format :scientific)
+                     :scientific
                      *printing-format*)))
 
-(defun print-decimal (x stream &key (format *printing-format* formatp)
+(defun print-decimal (x stream &key (format *printing-format*)
                       (nan-diagnostic-p t))
-  "Prints the decimal X to STREAM. FORMAT should be either a keyword
- specifying a standard format or a function. The format argument
- only takes effect on finite numbers.
+  "Prints the decimal X to STREAM. FORMAT should be either a keyword specifying
+a standard format or a function.
 
- The standard printing format functions are accessible through the
+The standard printing format functions are accessible through the
 funtion GET-PRINTING-FORMAT."
-  (if formatp
-      (setf format (find-printing-format format)))
-  (let (place-plus-p omit-minus-p)
+  (let (print-plus-p omit-minus-p printed-exp dot-position)
     (with-inf-nan-handler
         (x :inf-around (write-string (call-next-handler) stream)
-           :inf-before (let (printed-exp dot-position place-dot-p) ; ignored variables
-                         (multiple-value-setq (printed-exp dot-position place-plus-p omit-minus-p place-dot-p)
-                           (funcall format 0 1 0)))
-           :+infinity (if (member place-plus-p '(t :coefficient))
+           :inf-before (setf (values printed-exp dot-position print-plus-p omit-minus-p)
+                             (find-printing-format format 0 1 0))
+           :+infinity (if (member print-plus-p '(t :coefficient))
                           "+Infinity"
                           "Infinity")
            :-infinity (if (member omit-minus-p '(t :coefficient))
                           "Infinity"
                           "-Infinity")
-           :qnan "NaN"
-           :snan "sNaN"
-           :nan-around
-           (progn
-             (multiple-value-bind (printed-exp dot-position place-plus-p omit-minus-p place-dot-p)
-                 (funcall format 0 0 0)
-               (declare (ignore printed-exp dot-position place-dot-p))
-               ;; prints the negative sign, if any
-               (cond
-                 ((df-negative-p x)
-                  (when (not (member omit-minus-p '(t :coefficient)))
-                    (write-char #\- stream)))
-                 ((member place-plus-p '(t :coefficient))
-                  (write-char #\+ stream)))
-               ;; prints "NaN" or "sNaN", according to NaN type
-               (write-string (call-next-handler) stream)
-               ;; prints NaN diagnostic number, if any
-               (when nan-diagnostic-p
-                 (when-let ((x-slots (df-slots x)))
-                   (%print-decimal stream (df-count-digits x) x-slots
-                                   (df-first-slot-last-digit x)
-                                   (df-last-slot-first-digit x)
-                                   nil nil nil nil nil))))))
+           :qnan (if (df-negative-p x)
+                     (if (not (member omit-minus-p '(t :coefficient)))
+                         "-NaN"
+                         "NaN")
+                     (if (member print-plus-p '(t :coefficient))
+                         "+NaN"
+                         "NaN"))
+           :snan (if (df-negative-p x)
+                     (if (not (member omit-minus-p '(t :coefficient)))
+                         "-sNaN"
+                         "sNaN")
+                     (if (member print-plus-p '(t :coefficient))
+                         "+sNaN"
+                         "sNaN"))
+           :nan-before (setf (values printed-exp dot-position print-plus-p omit-minus-p)
+                             (find-printing-format format 0 0 0))
+           ;; prints "NaN" or "sNaN", according to NaN type
+           :nan-around (write-string (call-next-handler) stream)
+           ;; prints NaN diagnostic number, if any
+           :nan-after (when nan-diagnostic-p
+                        (when-let ((x-slots (df-slots x)))
+                          (%print-decimal stream (df-count-digits x) x-slots
+                                          (df-first-slot-last-digit x)
+                                          (df-last-slot-first-digit x)
+                                          nil nil nil nil))))
       (multiple-value-bind (digits exponent adj-exponent x-slots fsld lsfd)
           (parse-info x)
-        (multiple-value-bind (printed-exp dot-position place-plus-p omit-minus-p place-dot-p)
-            (funcall format exponent adj-exponent digits)
-          ;; prints the negative sign, if any
-          (cond
-            ((df-negative-p x)
-             (when (not (member omit-minus-p '(t :coefficient)))
-               (write-char #\- stream)))
-            ((member place-plus-p '(t :coefficient))
-             (write-char #\+ stream)))
-          ;; prints the rest
-          (%print-decimal stream digits x-slots fsld lsfd printed-exp dot-position
-                          place-dot-p place-plus-p omit-minus-p)))))
+        (setf (values printed-exp dot-position print-plus-p omit-minus-p)
+              (find-printing-format format exponent adj-exponent digits))
+        ;; prints the negative sign, if any
+        (cond
+          ((df-negative-p x)
+           (when (not (member omit-minus-p '(t :coefficient)))
+             (write-char #\- stream)))
+          ((member print-plus-p '(t :coefficient))
+           (write-char #\+ stream)))
+        ;; prints the rest
+        (%print-decimal stream digits x-slots fsld lsfd
+                        printed-exp dot-position print-plus-p omit-minus-p))))
   (force-output stream)
   x)
 
@@ -142,38 +153,28 @@ funtion GET-PRINTING-FORMAT."
   (with-output-to-string (stream)
     (apply #'print-decimal x stream keys)))
 
-(defun %print-decimal (stream digits x-slots fsld lsfd printed-exp dot-position
-                       place-dot-p place-plus-p omit-minus-p)
-  (let* ((place-dot-p (and place-dot-p dot-position))
-         (dot-position (or dot-position digits))
-         (buffer (make-string (max (1+ digits) (if (minusp dot-position)
-                                                   (- 2 dot-position)
-                                                   dot-position)
+(defun %print-decimal (stream digits x-slots fsld lsfd
+                       printed-exp dot-position print-plus-p omit-minus-p)
+  (let* ((dot-position (or dot-position digits))
+         (buffer (make-string (max (+ 2 digits (abs dot-position))
                                    (1+ +decimal-slot-digits+))
                               :element-type 'base-char :initial-element #\0)))
-    ;; prints zeroes up to the digits of the number, if any
-    (cond
-      ((= dot-position 0) (write-char #\0 stream))
-      ((< dot-position 0)
-       (setf (char buffer 1) #\.)
-       (write-string buffer stream :end (- 2 dot-position))))
-    ;; prints the digits of the number
     (let ((pos 0))
+      ;; prints zeroes up to the digits of the number, if any
+      (when (<= dot-position 0)
+        (setf (char buffer 1) #\.
+              pos (- 2 dot-position)))
+      ;; prints the digits of the number
       (map-digits-array #'(lambda (digit)
                             (when (= dot-position pos)
                               (setf (char buffer pos) #\.)
                               (incf pos))
-                            (setf (char buffer pos)
-                                  (digit-char digit))
+                            (setf (char buffer pos) (digit-char digit))
                             (incf pos))
                         x-slots fsld lsfd nil)
-      (when (>= dot-position pos)
-        (when (> dot-position pos)
-          (fill buffer #\0 :start pos :end dot-position)
-          (setf pos dot-position))
-        (when place-dot-p
-          (setf (char buffer pos) #\.)
-          (incf pos)))
+      (when (> dot-position pos)
+        (fill buffer #\0 :start pos :end dot-position)
+        (setf pos dot-position))
       (write-string buffer stream :end pos))
     ;; prints the exponent, if any
     (when printed-exp
@@ -182,83 +183,69 @@ funtion GET-PRINTING-FORMAT."
         ((minusp printed-exp)
          (when (member omit-minus-p '(t :exponent))
            (setf printed-exp (abs printed-exp))))
-        ((member place-plus-p '(t :exponent))
+        ((member print-plus-p '(t :exponent))
          (write-char #\+ stream)))
       (format stream "~10r" printed-exp))))
 
-(set-dispatch-macro-character
- #\# #\$
- #'(lambda (stream char depth)
-     (declare (ignore char depth))
-     (let ((string (with-output-to-string (output)
-                     (loop for char = (read-char stream nil #\  stream)
-                        while (or (alphanumericp char)
-                                  (member char '(#\+ #\- #\.)))
-                        do (write-char char output)))))
-       (with-condition-signallers ('(decimal-invalid-operation))
-         (parse-decimal string :round-p nil)))))
-
-(defun parse-decimal (string &key (start 0) end (round-p t) trim-spaces)
-  (setf end (or end (length string)))
+(defun parse-decimal (string &key (start 0) (end (length string)) (round-p t)
+                      (trim-spaces t))
   (with-operation (parse-decimal condition (subseq string start (or end (length string))))
-      ((decimal-conversion-syntax (make-qnan nil condition)))
+    ((decimal-conversion-syntax (make-nan nil nil condition)))
     (when trim-spaces
       (setf start (or (position-if (complement #'whitespace-p)
                                    string :start start :end end)
                       end)
-            end (or (position-if #'whitespace-p string :start start :end end)
+            end (or (position-if (complement #'whitespace-p)
+                                 string :start start :end end :from-end t)
                     end)))
     (unless (< -1 start end)
-      (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))
+      (decimal-error-cond (nil :return-p t)
+        decimal-conversion-syntax))
     (let* ((position start)
            (signed-p (case (char string start)
-                       (#\+ (incf position)
-                            nil)
-                       (#\- (incf position)
-                            t)
+                       (#\+ (incf position) nil)
+                       (#\- (incf position) t)
                        (t nil))))
       (if (alpha-char-p (char string position))
-          (let* ((pos (mismatch "NaN" string :start2 position :end2 end
+          (let* ((pos (mismatch "nan" string :start2 position :end2 end
                                 :test #'char-equal))
-                 (poss (mismatch "sNaN" string :start2 position :end2 end
+                 (poss (mismatch "snan" string :start2 position :end2 end
                                  :test #'char-equal))
                  (signaling-p (when (or (not poss) (= poss 4))
                                 (setf pos poss)
                                 t)))
             (cond ((or (null pos) (= pos 3) signaling-p)
-                   (let ((nan (if signaling-p
-                                  (make-snan signed-p 0)
-                                  (make-qnan signed-p 0))))
+                   (let ((nan (make-nan signed-p signaling-p)))
+                     ;; Read NaN diagnostic message.
                      (when pos
                        (incf position pos)
-                       (when (find-if (complement #'digit-char-p) string
-                                      :start position :end end)
-                         (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))
-                       (let* ((slots (nth-value 1 (%parse-decimal string position end)))
-                              (end (position-if #'plusp slots :from-end t)))
-                         (when end
-                           (multiple-value-bind (slots fsld lsfd discarded-digits some-digit-discarded-p)
-                               (coerce-to-precision-digits end slots 0
-                                   (first-digit-of-slot (aref slots (1- end))))
-                             (declare (ignore discarded-digits))
-                             (when some-digit-discarded-p
-                               (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))
-                             (setf (df-slots nan) slots
-                                   (df-first-slot-last-digit nan) fsld
-                                   (df-last-slot-first-digit nan) lsfd)))))
+                       ;; Rounding NaN diagnostic message is not allowed.
+                       (when (or (and round-p (> (- end start) *precision*))
+                                 (find-if (complement #'digit-char-p) string
+                                          :start position :end end))
+                         (decimal-error-cond (nil :return-p t)
+                           decimal-conversion-syntax))
+                       (multiple-value-bind (iexponent slots fsld lsfd)
+                           (%parse-decimal string position end)
+                         (setf (df-slots nan) slots
+                               (df-first-slot-last-digit nan) fsld
+                               (df-last-slot-first-digit nan) lsfd)))
                      nan))
-                  ((or (string-equal "Inf" string :start2 position :end2 end)
-                       (string-equal "Infinity" string :start2 position :end2 end))
+                  ((or (string-equal "inf" string :start2 position :end2 end)
+                       (string-equal "infinity" string :start2 position :end2 end))
                    (make-infinity signed-p))
                   (t
-                   (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))))
+                   (decimal-error-cond (nil :return-p t)
+                     decimal-conversion-syntax))))
           (multiple-value-bind (iexponent slots fsld lsfd)
               (%parse-decimal string position end)
             (declare (ignore lsfd))
             (let ((*precision* (if round-p
                                    *precision*
                                    (length string))))
-              (normalize-number iexponent slots fsld signed-p)))))))
+              (values
+               (normalize-number iexponent slots fsld signed-p)
+               end)))))))
 
 (defun %parse-decimal (string start end)
   (let* ((e-position (or (position #\e string :start start :end end :test #'char-equal)
@@ -275,23 +262,30 @@ funtion GET-PRINTING-FORMAT."
                                             (member char '(#\+ #\-))))
                                       (digit-char-p (char string (1- end))))
                            ;; parse-integer accepts leading and trailing whitespaces
-                           (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))
-                         (handler-case (parse-integer string :start (1+ e-position) :end end)
+                           (decimal-error-cond (nil :return-p t)
+                             decimal-conversion-syntax))
+                         (handler-case (parse-integer string :start (1+ e-position)
+                                                      :end end)
                            (parse-error ()
-                             (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))))
-                        (t (decimal-error-cond (nil :return-p t) decimal-conversion-syntax)))))
+                             (decimal-error-cond (nil :return-p t)
+                               decimal-conversion-syntax))))
+                        (t (decimal-error-cond (nil :return-p t)
+                             decimal-conversion-syntax)))))
     (unless (plusp digits)
-      (decimal-error-cond (nil :return-p t) decimal-conversion-syntax))
+      (decimal-error-cond (nil :return-p t)
+        decimal-conversion-syntax))
     (multiple-value-bind (slots fsld lsfd iexponent)
         (calculate-info digits printed-exp (- dot-position start))
-      (let* ((position (1- start))
+      (let* ((position start)
              (slots (map-digits-array
                      #'(lambda (old-digit)
                          (declare (ignore old-digit))
-                         (incf position)
                          (if (= position dot-position)
                              (incf position))
-                         (or (digit-char-p (char string position))
-                             (decimal-error-cond (nil :return-p t) decimal-conversion-syntax)))
+                         (prog1
+                             (or (digit-char-p (char string position))
+                                 (decimal-error-cond (nil :return-p t)
+                                   decimal-conversion-syntax))
+                           (incf position)))
                      slots fsld lsfd t)))
         (values iexponent slots fsld lsfd)))))

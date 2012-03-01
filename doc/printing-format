@@ -1,21 +1,20 @@
 
- Copyright (c) 2009 Gustavo Henrique Milaré
+ Copyright (c) 2009-2012 Gustavo Henrique Milaré
  See the file license for license information.
 
  A printing format function should take three arguments:
 
-  - EXPONENT, the exponent of the number, i.e., the exponent to be used
-    if all digits are printed as an integer.
-    (In particular, if EXPONENT is non-negative, the number is integral).
+  - EXPONENT, the exponent of the number, i.e., the exponent to be used if all
+    digits are printed as an integer. (In particular, if EXPONENT is
+    non-negative, the number is integral).
     It will be 0 if number is special (i.e. infinity or NaN)
 
-  - ADJUSTED-EXPONENT, the adjusted exponent of the number, i.e., the
-    exponent to be used if only one digit is placed before the point.
-    It will be 0 if number is a NaN or 1 if number is infinity.
+  - ADJUSTED-EXPONENT, the adjusted exponent of the number, i.e., the exponent
+    to be used if only one digit is placed before the dot ('.'). It will be 0 if
+    number is a NaN or 1 if number is infinity.
 
-  - DIGITS, the number of significant digits to be printed
-    (including zeroes to the right). It will be 1 if the number is zero,
-    and 0 if (and only if) the number is special.
+  - DIGITS, the number of significant digits to be printed (including zeroes to
+    the right). It will be 0 if and only if the number is special.
 
  They have the mathematical relation
 
@@ -23,51 +22,49 @@
 
  and all are given to make manipulation easiear.
 
- This function must return these five values, in order (non-returned values are always nil):
+ This function must return these five values, in order:
 
-  - PRINTED-EXPONENT, the exponent to be printed (after the 'E' character)
-    or NIL not to use scientific notation.
-    This is ignored if the number to be printed is special.
+  - PRINTED-EXPONENT, the exponent to be printed (after the 'E' character) or
+    NIL not to use exponencial notation. This value is ignored if the number to
+    be printed is special.
 
-  - DOT-POSITION, the position of the point ('.').
-    If positive, it tells how many digits will be printed before the point,
+  - DOT-POSITION, the position of the dot ('.').
+    If positive, it tells how many digits will be printed before the dot,
     including zeroes if necessary.
-    If it is zero, a single zero digit will be placed before the point.
-    If it is negative, a zero digit is placed, then the decimal point, then
-    (- DOT-POSITION) zero digits are placed before the digits of the number.
-    The dot is ommited if dot-position is nil
-    This is ignored if the number to be printed is special.
+    If it is zero, a single zero digit will be printed before the dot.
+    If it is negative, a zero digit will be printed, then the decimal dot, then
+    (- DOT-POSITION) zero digits will be printed before the digits of the number.
+    The dot is ommited if dot-position is NIL.
+    In all of the situations above, 
+    This value is ignored if the number to be printed is special.
 
-  - PLACE-PLUS-P, tells if the sign '+' must be *placed* if the number is positive
+  - PRINT-PLUS-P, tells if the sign '+' must be shown if the number is positive
     (or a positive zero, or an unsigned NaN). Its possible values are:
-    nil - don't put any '+' signs
-    :coefficient - place a '+' before the coefficient if it is positive
-    :exponent - place a '+' before the exponent if it is positive
-    t - place a '+' in both the exponent and coefficient
-    
+    NIL - don't print any '+' signs;
+    :COEFFICIENT - print a '+' before the coefficient if it is positive;
+    :EXPONENT - print a '+' before the exponent if it is positive;
+    T - print '+' in both the exponent and coefficient.
 
   - OMIT-MINUS-P, tells if the sign '-' must be *omitted* if the number is negative
-    (or a negative zero, or a signed NaN). Its possible values are
-    nil - put the '-' in the cofefficient and exponent where applicable
-    :coefficient - omit the '-' before the coefficient if it is negative
-    :exponent - omit the '-' before the exponent if it is negative
-    t - omit the '-' in both the exponent and coefficient
+    (or a negative zero, or a signed NaN). Its possible values are:
+    NIL - print a '-' in the cofefficient and exponent where applicable;
+    :COEFFICIENT - omit the '-' before the coefficient if it is negative;
+    :EXPONENT - omit the '-' before the exponent if it is negative;
+    T - omit the '-' in both the exponent and coefficient.
 
-  - PLACE-OPTIONAL-DOT-P, tells if the point should be placed at the end of an integer
-    (e.g. 12345.e10), or, in other words, when DIGITS equals DOT-POSITION.
+ If the printed number must represent the actual number, the following relation
 
- If the printed number must represent the actual number, the relation
+   (or DOT-POSITION DIGITS) - 1 + PRINTED-EXPONENT = ADJUSTED-EXPONENT
 
-   (DOT-POSITION or DIGITS) - 1 + PRINTED-EXPONENT = ADJUSTED-EXPONENT
+should be respected. Also, if the precision must be preserved, then DOT-POSITION
+must either less or equal than DIGITS or nil.
 
-should be respected, but disrespecting it is valid if desired
-(see, for instance, the :digits format). Also, if the precision
-must be preserved, then DOT-POSITION must either less or equal than
-DIGITS or nil.
+ These relations are satisfyied only by :SCIENTIFIC, :ENGINEERING, :EXPONENCIAL,
+:SIGNED-DIGITS+EXPONENT and :DIGITS+EXPONENT among the built-in formats.
 
- These relations are satisfyied only by :scientific, :engineering,
-:exponencial, :signed-digits+exponent and :digits+exponent
-among the standard formats.
-
- Examples: (values adjusted-exponent 1 nil nil) => :exponencial (exponencial notation with optional sign)
-           (values nil nil nil t) => :unsigned-digits (only the digits of the number)
+ Examples: ;; print the number in exponencial notation with optional sign
+           (values adjusted-exponent 1) => :exponencial notation
+           ;; prints three digits before the sign (e.g. 123.456E78)
+           (values adjusted-exponent 3) => :exponencial notation
+           ;; prints only the digits of the number
+           (values nil nil nil t) => :unsigned-digits
