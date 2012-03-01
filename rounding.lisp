@@ -147,34 +147,32 @@ Information on how to create a rounding mode function is in the file
        (multiple-value-bind (new-length new-fsld)
            (ceiling (- precision 1 lsfd) +decimal-slot-digits+)
          (let ((start (- end (1+ new-length)))
-               (fsld (- new-fsld))
-               (discarded-digits 0))
+               (fsld (- new-fsld)))
            (multiple-value-bind (last-discarded pow-10)
                (if (zerop fsld)
                    (values (1- start) +maximum-decimal-slot+)
                    (values start (aref +expt-10+ fsld)))
-             (setf discarded-digits
-                   (let* ((half-pow-10 (truncate pow-10 2))
-                          (discarded-slot (rem (aref slots last-discarded) pow-10))
-                          (discarded-digits
-                           ;; Value that will be used by rounding-mode
-                           ;; (see doc/rounding-mode)
-                           (cond
-                             ((< discarded-slot half-pow-10)
-                              (if (or (plusp discarded-slot)
-                                      (find-if #'plusp slots :end last-discarded))
-                                  2
-                                  0))
-                             ((> discarded-slot half-pow-10)
-                              7)
-                             (t ;; (= slot half-slot)
-                              (if (find-if #'plusp slots :end last-discarded)
-                                  7
-                                  5)))))
-                     ;; Setting invalid digits to zero
-                     (decf (aref slots last-discarded) discarded-slot)
-                     (values (resize-slots slots start end) fsld lsfd
-                             discarded-digits t)))))))
+             (let* ((half-pow-10 (truncate pow-10 2))
+                    (discarded-slot (rem (aref slots last-discarded) pow-10))
+                    (discarded-digits
+                     ;; Value that will be used by rounding-mode
+                     ;; (see doc/rounding-mode)
+                     (cond
+                       ((< discarded-slot half-pow-10)
+                        (if (or (plusp discarded-slot)
+                                (find-if #'plusp slots :end last-discarded))
+                            2
+                            0))
+                       ((> discarded-slot half-pow-10)
+                        7)
+                       (t ;; (= slot half-slot)
+                        (if (find-if #'plusp slots :end last-discarded)
+                            7
+                            5)))))
+               ;; Setting invalid digits to zero
+               (decf (aref slots last-discarded) discarded-slot)
+               (values (resize-slots slots start end) fsld lsfd
+                       discarded-digits t))))))
       (t (values (resize-slots slots 0 end) fsld lsfd 0 nil)))))
 
 (defun round-number (end iexponent slots fsld signed-p)
