@@ -67,7 +67,7 @@ The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
   (:digits+exponent (values exponent nil nil nil))
   (:unsigned-digits+exponent (values exponent nil nil t)))
 
-(defun decimal-macro-character (stream char depth)
+(defun decimal-dispatch-macro-character (stream char depth)
   (declare (ignore char depth))
   (let ((string (with-output-to-string (output)
                   (loop for char = (read-char stream nil #\  stream)
@@ -77,7 +77,7 @@ The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
     (with-condition-trap-enablers ('(decimal-invalid-operation))
       (parse-decimal string :round-p nil))))
 
-(set-dispatch-macro-character #\# #\$ #'decimal-dispatch-macro)
+(set-dispatch-macro-character #\# #\$ #'decimal-dispatch-macro-character)
 
 (defmethod print-object ((x decimal-float) stream)
   (write-string "#$" stream)
@@ -190,14 +190,14 @@ funtion GET-PRINTING-FORMAT."
 (defun parse-decimal (string &key (start 0) (end (length string)) (round-p t)
                       (trim-spaces t))
   (with-operation (parse-decimal condition (subseq string start (or end (length string))))
-    ((decimal-conversion-syntax (make-nan nil nil condition)))
+    ((decimal-conversion-syntax (make-nan nil nil)))
     (when trim-spaces
       (setf start (or (position-if (complement #'whitespace-p)
                                    string :start start :end end)
-                      end)
-            end (or (position-if (complement #'whitespace-p)
-                                 string :start start :end end :from-end t)
-                    end)))
+                      end))
+      (when-let (new-end (position-if (complement #'whitespace-p)
+                                      string :start start :end end :from-end t))
+        (setf end (1+ new-end))))
     (unless (< -1 start end)
       (decimal-error-cond (nil :return-p t)
         decimal-conversion-syntax))
@@ -227,6 +227,7 @@ funtion GET-PRINTING-FORMAT."
                            decimal-conversion-syntax))
                        (multiple-value-bind (iexponent slots fsld lsfd)
                            (%parse-decimal string position end)
+                         (declare (ignore iexponent))
                          (setf (df-slots nan) slots
                                (df-first-slot-last-digit nan) fsld
                                (df-last-slot-first-digit nan) lsfd)))
@@ -245,6 +246,7 @@ funtion GET-PRINTING-FORMAT."
                                    (length string))))
               (values
                (normalize-number iexponent slots fsld signed-p)
+               ;; Following convention of PARSE-INTEGER
                end)))))))
 
 (defun %parse-decimal (string start end)

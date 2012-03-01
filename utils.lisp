@@ -120,7 +120,7 @@
              ,@,body-var))))))
 
 (defmacro def-customize-function (&whole whole name lambda-list &body body)
-  (with-gensyms (key )
+  (with-gensyms (key)
     (multiple-value-bind (defaults declarations documentation)
         (parse-body body :documentation t :whole whole)
       `(defun ,name (,key ,@lambda-list)
