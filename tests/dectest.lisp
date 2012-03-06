@@ -1,9 +1,12 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-;;; Copyright (c) 2009 Gustavo Henrique Milaré
+;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
 (in-package :decimal-floats-tests)
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (print *compile-file-pathname*))
 
 (defun get-line-element (string state position)
   (let* ((first-char (char string position))
@@ -37,12 +40,15 @@
                     (if (char= (char string (1- end)) #\:)
                         (progn
                           (setf state :result)
-                          (values 'directive (read-from-string sub t nil :end (1- (length sub)))))
+                          (values 'directive (read-from-string sub t nil
+                                                               :end (1- (length sub)))))
                         (progn
                           (setf state :operation)
                           (values 'test-id (read-from-string sub)))))
                    (:condition
-                    (values 'condition (symbolicate "DECIMAL-" (nstring-upcase (substitute #\- #\_ sub)))))
+                    (values 'condition
+                            (symbolicate "DECIMAL-"
+                                         (nstring-upcase (substitute #\- #\_ sub)))))
                    (:operand
                     (values 'operand sub))
                    (:result
@@ -55,7 +61,8 @@
           ((= position length)
            (values nil nil))
           ((eq (char string position) #\Space)
-           (setf position (or (position #\Space string :start position :test (complement #'char=))
+           (setf position (or (position #\Space string :start position
+                                        :test-not #'char=)
                               length))
            (line-parser))
           ((eq (char string position) #\-)
@@ -141,16 +148,10 @@
   (ecase operation
     ((tosci toeng apply) #'identity)))
 
-(defmacro apply-getting-conditions (function operands)
-  (with-gensyms (conditions c)
-    `(let ((,conditions nil))
-       (values
-        (handler-bind ((decimal-float-condition
-                        (lambda (,c)
-                          (push (class-name (class-of ,c)) ,conditions)
-                          (invoke-restart 'return-defined-result))))
-          (apply ,function ,operands))
-        (nreverse ,conditions)))))
+(defun apply-getting-conditions (function operands)
+  (with-condition-trap-enablers (nil)
+    (with-condition-flags* (nil)
+      (apply function operands))))
 
 (defvar *testcase-precision* *precision*)
 (defvar *testcase-rounding-mode* *rounding-mode*)
@@ -184,8 +185,8 @@
         (format t ";;; Starting evaluation...~%")
         (handler-case (eval parsed-output)
           (error (c)
-                 (cerror "Continue without evaluating" c)
-                 (format t ";;; Error during evaluation, ignored.~%")))
+            (cerror "Continue without evaluating" c)
+            (format t ";;; Error during evaluation, ignored.~%")))
         (format t ";;; Evaluation finished.~%"))
       parsed-output)))
 
@@ -251,7 +252,8 @@ version being used: ~S, ignored version: ~S."
                                        (lambda (test directive)
                                          `(when ,test
                                             (push (list ',directive
-                                                        ,(symbolicate "*TESTCASE-" directive "*"))
+                                                        ,(symbolicate "*TESTCASE-"
+                                                                      directive "*"))
                                                   ,directives))))
                                 all-tests)
                       (if ,directives
@@ -274,8 +276,10 @@ version being used: ~S, ignored version: ~S."
                             (lambda (test-id operation operands -> result conditions)
                               (declare (ignore ->))
                               ;; FIXME: no maxexponent or minexponent
-                              ;; in the standard testcase files are supported by this implementation,
-                              ;; so, for now, there is no way to simulate overflow or underflow tests.
+                              ;; in the standard testcase files are
+                              ;; supported by this implementation, so,
+                              ;; for now, there is no way to simulate
+                              ;; overflow or underflow tests.
                               (with-directive-tests
                                   (`(test-comparison ',test-id ',operation
                                                      ',operands ',result ',conditions)
@@ -284,7 +288,8 @@ version being used: ~S, ignored version: ~S."
                                       (intersection '(decimal-overflow clamped) conditions))
                                  maxexponent)
                                 ((and (/= +minimum-exponent+ *testcase-minexponent*)
-                                      (intersection '(decimal-subnormal decimal-underflow clamped)
+                                      (intersection '(decimal-subnormal decimal-underflow
+                                                      decimal-clamped)
                                                     conditions))
                                  minexponent))))
                      (cons first-test other-tests))))
@@ -293,7 +298,7 @@ version being used: ~S, ignored version: ~S."
               `(addtest (,*testcase-testsuite*)
                  ,ctest-name
                  (let ((*precision* ,*testcase-precision*)
-                       (*rounding-mode* (find-rounding-mode ,*testcase-rounding-mode*)))
+                       (*rounding-mode* ,*testcase-rounding-mode*))
                    ,@inner-forms)))))
       (with-directive-tests (ctest-form "tests")
         ((/= 1 *testcase-extended*) extended)

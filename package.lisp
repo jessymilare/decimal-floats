@@ -12,6 +12,7 @@
    #:decimal-float #:exponent #:adjusted-exponent
 
    ;; Conditions
+   #:+all-conditions+
    #:decimal-float-condition
    #:decimal-clamped #:decimal-division-by-zero #:decimal-inexact
    #:decimal-invalid-operation

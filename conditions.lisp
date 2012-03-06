@@ -72,14 +72,14 @@ function ERROR when found. Use FIND-CONDITION-TRAP-ENABLERS to encode a list of
 symbols into a suitable format for this variable."
   (get-condition-flags condition-trap-enablers))
 
-(defmacro with-condition-flags* ((&rest flags) &body body)
+(defmacro with-condition-flags* ((flags) &body body)
   "Like WITH-CONDITION-FLAGS, but returns two values: the value returned by BODY
 as an implicit progn, and the list of (arithmetic) conditions that were
 signalled during its execution."
-  `(let ((*condition-flags* (get-condition-flags ',flags)))
+  `(let ((*condition-flags* (find-condition-flags ,flags)))
      (values
       (progn ,@body)
-      (parse-condition-flags *condition-flags*))))
+      (get-condition-flags *condition-flags*))))
 
 (defmacro with-operation ((operation-name condition-var &rest operation-arguments)
                           (&rest condition-case)
@@ -103,7 +103,7 @@ signalled during its execution."
 (defmacro decimal-error-cond ((defined-result &key return-p) &body conditions)
   (check-type return-p boolean)
   (with-gensyms (condition-trap-enablers condition-flags condition-var
-                                 local-error return-function)
+                                         local-error return-function)
     (let* ((conditions (mapcar #'ensure-list conditions))
            (bit-numbers (mapcar (compose #'get-condition-bit #'lastcar) conditions)))
       (once-only (defined-result)
@@ -119,14 +119,14 @@ signalled during its execution."
                                 ,@tests
                                 (multiple-value-call #'signal-decimal-condition
                                   (funcall ,local-error ',condition ,defined-result)
-                                  :return-p ,return-p)))
-             (setf *condition-flags* (logior ,condition-flags
-                                             ,@(loop for condition-spec in conditions
-                                                  for tests = (butlast condition-spec)
-                                                  for bit-number in bit-numbers
-                                                  collect `(if (and ,@tests)
-                                                               (ash 1 ,bit-number)
-                                                               0)))))
+                                  :return-p ,return-p))))
+           (setf *condition-flags* (logior ,condition-flags
+                                           ,@(loop for condition-spec in conditions
+                                                for tests = (butlast condition-spec)
+                                                for bit-number in bit-numbers
+                                                collect `(if (and ,@tests)
+                                                             (ash 1 ,bit-number)
+                                                             0))))
            (locally ; avoid compiler-warnings of "deleting unreachable code"
                #+sbcl (declare (optimize sb-ext:inhibit-warnings))
                (or ,defined-result
