@@ -31,10 +31,11 @@ may not be the same). If readability is needed, use one of the following formats
 The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
 *PRINT-READABLY* is true.")
 
-(def-customize-function find-printing-format (exponent adj-exponent digits)
+(def-customize-function find-printing-format (exponent adj-exponent digits zerop)
   (declare (type adjusted-exponent adj-exponent)
            (type exponent exponent)
-           (type fixnum digits))
+           (type fixnum digits)
+           (type boolean zerop))
   (:scientific (if (and (<= exponent 0)
                         (<= -6 adj-exponent))
                    (values nil
@@ -53,6 +54,8 @@ The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
                          (<= -6 adj-exponent))
                     (values nil (+ digits exponent) :exponent)
                     (let* ((adjust (mod adj-exponent 3)))
+                      (when (and zerop (not (zerop adjust)))
+                        (decf adjust 3))
                       (decf adj-exponent adjust)
                       (values (if (zerop adj-exponent)
                                   nil
@@ -81,11 +84,13 @@ The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
 
 (defmethod print-object ((x decimal-float) stream)
   (write-string "#$" stream)
-  (print-decimal x stream
-                 :format
-                 (if *print-readably*
-                     :scientific
-                     *printing-format*)))
+  (print-decimal x stream :format (if (and *print-readably*
+                                           (not (member *printing-format*
+                                                        '(:scientific :engineering
+                                                          :signed-digits+exponent
+                                                          :digits+exponent))))
+                                      :scientific
+                                      *printing-format*)))
 
 (defun print-decimal (x stream &key (format *printing-format*)
                       (nan-diagnostic-p t))
@@ -98,7 +103,7 @@ funtion GET-PRINTING-FORMAT."
     (with-inf-nan-handler
         (x :inf-around (write-string (call-next-handler) stream)
            :inf-before (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-                             (find-printing-format format 0 1 0))
+                             (find-printing-format format 0 1 0 nil))
            :+infinity (if (member print-plus-p '(t :coefficient))
                           "+Infinity"
                           "Infinity")
@@ -120,21 +125,21 @@ funtion GET-PRINTING-FORMAT."
                          "+sNaN"
                          "sNaN"))
            :nan-before (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-                             (find-printing-format format 0 0 0))
+                             (find-printing-format format 0 0 0 nil))
            ;; prints "NaN" or "sNaN", according to NaN type
            :nan-around
            (progn
              (write-string (call-next-handler) stream)
              (when nan-diagnostic-p
-               (when-let ((x-slots (df-slots x)))
-                 (%print-decimal stream (df-count-digits x) x-slots
+               (when-let ((slots (df-slots x)))
+                 (%print-decimal stream (df-count-digits x) slots
                                  (df-first-slot-last-digit x)
                                  (df-last-slot-first-digit x)
                                  nil nil nil nil)))))
-      (multiple-value-bind (digits exponent adj-exponent x-slots fsld lsfd)
+      (multiple-value-bind (digits exponent adj-exponent slots fsld lsfd zerop)
           (parse-info x)
         (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-              (find-printing-format format exponent adj-exponent digits))
+              (find-printing-format format exponent adj-exponent digits zerop))
         ;; prints the negative sign, if any
         (cond
           ((df-negative-p x)
@@ -143,7 +148,7 @@ funtion GET-PRINTING-FORMAT."
           ((member print-plus-p '(t :coefficient))
            (write-char #\+ stream)))
         ;; prints the rest
-        (%print-decimal stream digits x-slots fsld lsfd
+        (%print-decimal stream digits slots fsld lsfd
                         printed-exp dot-position print-plus-p omit-minus-p))))
   (force-output stream)
   x)

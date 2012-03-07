@@ -2,7 +2,7 @@
  Copyright (c) 2009-2012 Gustavo Henrique Milaré
  See the file license for license information.
 
- A printing format function should take three arguments:
+ A printing format function should take four arguments:
 
   - EXPONENT, the exponent of the number, i.e., the exponent to be used if all
     digits are printed as an integer. (In particular, if EXPONENT is
@@ -15,6 +15,8 @@
 
   - DIGITS, the number of significant digits to be printed (including zeroes to
     the right). It will be 0 if and only if the number is special.
+
+  - ZEROP, a boolean that tells whether the number to be printed is a zero.
 
  They have the mathematical relation
 

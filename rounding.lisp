@@ -222,8 +222,11 @@ Information on how to create a rounding mode function is in the file
 
 (defun normalize-number (iexponent slots fsld signed-p)
   (let* ((length (length slots))
+         (zerop nil)
          (new-length (1+ (or (position-if #'plusp slots :from-end t)
-                             0)))
+                             (progn
+                               (setf zerop t)
+                               0))))
          (iexponent (+ iexponent (- new-length length))))
     (cond
       ((> iexponent +internal-e-max+)
