@@ -45,8 +45,8 @@
     :EXPONENT - print a '+' before the exponent if it is positive;
     T - print '+' in both the exponent and coefficient.
 
-  - OMIT-MINUS-P, tells if the sign '-' must be *omitted* if the number is negative
-    (or a negative zero, or a signed NaN). Its possible values are:
+  - OMIT-MINUS-P, tells if the sign '-' must be *omitted* if the number is
+    negative (or a negative zero, or a signed NaN). Its possible values are:
     NIL - print a '-' in the cofefficient and exponent where applicable;
     :COEFFICIENT - omit the '-' before the coefficient if it is negative;
     :EXPONENT - omit the '-' before the exponent if it is negative;
