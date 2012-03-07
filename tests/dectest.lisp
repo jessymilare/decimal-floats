@@ -148,11 +148,6 @@
   (ecase operation
     ((tosci toeng apply) #'identity)))
 
-(defun apply-getting-conditions (function operands)
-  (with-condition-trap-enablers (nil)
-    (with-condition-flags* (nil)
-      (apply function operands))))
-
 (defvar *testcase-precision* *precision*)
 (defvar *testcase-rounding-mode* *rounding-mode*)
 (defvar *testcase-maxexponent* +maximum-exponent+)
@@ -312,10 +307,12 @@ version being used: ~S, ignored version: ~S."
 
 (defun test-comparison (test-id operation operands result conditions)
   (multiple-value-bind (new-result new-conditions)
-      (apply-getting-conditions
-       (get-operation operation)
-       (mapcar (rcurry #'parse-decimal :round-p (member operation '(tosci toeng apply)))
-               operands))
+      (with-condition-trap-enablers (nil)
+        (with-condition-flags* (nil)
+          (apply (get-operation operation)
+                 (mapcar (rcurry #'parse-decimal
+                                 :round-p (and (member operation '(tosci toeng apply)) t))
+                         operands))))
     (ensure-same
      (decimal-to-string new-result
                         :format (case operation
