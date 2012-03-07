@@ -221,7 +221,7 @@ numbers.")
              :interactive (lambda ()
                             (list (prompt t "Enter the value to be returned (it will be~
  parsed with parse-decimal):~%")))
-             (parse-decimal value)))))
+             (parse-decimal value :trim-spaces t)))))
     (if return-p
         (funcall return-function value)
         value)))

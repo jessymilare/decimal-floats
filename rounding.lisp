@@ -231,7 +231,6 @@ Information on how to create a rounding mode function is in the file
            ((if (find-rounding-mode *rounding-mode* 10 10 signed-p)
                 (make-infinity signed-p)
                 (make-almost-infinity signed-p)))
-         ;; Order of signalization must be preserved.
          decimal-overflow decimal-inexact decimal-rounded))
       ((<= iexponent +internal-e-min+)
        (round-number (+ new-length (- +internal-e-min+ iexponent))

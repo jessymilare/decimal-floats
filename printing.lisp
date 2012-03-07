@@ -32,9 +32,9 @@ The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
 *PRINT-READABLY* is true.")
 
 (def-customize-function find-printing-format (exponent adj-exponent digits)
-  (declare (type adjusted-exponent adj-exponent) ; can't do any better
+  (declare (type adjusted-exponent adj-exponent)
            (type exponent exponent)
-           (type fixnum digits)) ; omit the '-' sign?
+           (type fixnum digits))
   (:scientific (if (and (<= exponent 0)
                         (<= -6 adj-exponent))
                    (values nil
@@ -75,7 +75,7 @@ The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
                                (member char '(#\+ #\- #\.)))
                      do (write-char char output)))))
     (with-condition-trap-enablers ('(decimal-invalid-operation))
-      (parse-decimal string :round-p nil))))
+      (parse-decimal string :round-p nil :trim-spaces t))))
 
 (set-dispatch-macro-character #\# #\$ #'decimal-dispatch-macro-character)
 
@@ -122,14 +122,15 @@ funtion GET-PRINTING-FORMAT."
            :nan-before (setf (values printed-exp dot-position print-plus-p omit-minus-p)
                              (find-printing-format format 0 0 0))
            ;; prints "NaN" or "sNaN", according to NaN type
-           :nan-around (write-string (call-next-handler) stream)
-           ;; prints NaN diagnostic number, if any
-           :nan-after (when nan-diagnostic-p
-                        (when-let ((x-slots (df-slots x)))
-                          (%print-decimal stream (df-count-digits x) x-slots
-                                          (df-first-slot-last-digit x)
-                                          (df-last-slot-first-digit x)
-                                          nil nil nil nil))))
+           :nan-around
+           (progn
+             (write-string (call-next-handler) stream)
+             (when nan-diagnostic-p
+               (when-let ((x-slots (df-slots x)))
+                 (%print-decimal stream (df-count-digits x) x-slots
+                                 (df-first-slot-last-digit x)
+                                 (df-last-slot-first-digit x)
+                                 nil nil nil nil)))))
       (multiple-value-bind (digits exponent adj-exponent x-slots fsld lsfd)
           (parse-info x)
         (setf (values printed-exp dot-position print-plus-p omit-minus-p)
@@ -188,7 +189,7 @@ funtion GET-PRINTING-FORMAT."
       (format stream "~10r" printed-exp))))
 
 (defun parse-decimal (string &key (start 0) (end (length string)) (round-p t)
-                      (trim-spaces t))
+                      (trim-spaces nil))
   (with-operation (parse-decimal condition (subseq string start (or end (length string))))
       ((decimal-conversion-syntax (make-nan nil nil)))
     (when trim-spaces
@@ -219,15 +220,15 @@ funtion GET-PRINTING-FORMAT."
                      ;; Read NaN diagnostic message.
                      (when pos
                        (incf position pos)
-                       ;; Rounding NaN diagnostic message is not allowed.
-                       (when (or (and round-p (> (- end start) *precision*))
-                                 (find-if (complement #'digit-char-p) string
-                                          :start position :end end))
-                         (decimal-error-cond (nil :return-p t)
-                           decimal-conversion-syntax))
                        (let ((position (position #\0 string :start position :end end
                                                  :test-not #'char=)))
                          (when position
+                           ;; Rounding NaN diagnostic message is not allowed.
+                           (when (or (and round-p (> (- end position) *precision*))
+                                     (find-if (complement #'digit-char-p) string
+                                              :start position :end end))
+                             (decimal-error-cond (nil :return-p t)
+                               decimal-conversion-syntax))
                            (multiple-value-bind (iexponent slots fsld lsfd)
                                (%parse-decimal string position end)
                              (declare (ignore iexponent))

@@ -306,13 +306,18 @@ version being used: ~S, ignored version: ~S."
   ())
 
 (defun test-comparison (test-id operation operands result conditions)
-  (multiple-value-bind (new-result new-conditions)
-      (with-condition-trap-enablers (nil)
-        (with-condition-flags* (nil)
-          (apply (get-operation operation)
-                 (mapcar (rcurry #'parse-decimal
-                                 :round-p (and (member operation '(tosci toeng apply)) t))
-                         operands))))
+  (let* ((new-conditions nil)
+         (new-result
+          (with-condition-trap-enablers (+all-conditions+)
+            (handler-bind ((decimal-float-condition
+                            (lambda (c)
+                              (push (class-name (class-of c)) new-conditions)
+                              (invoke-restart 'return-defined-result))))
+              (apply (get-operation operation)
+                     (mapcar (rcurry #'parse-decimal
+                                     :round-p
+                                     (and (member operation '(tosci toeng apply)) t))
+                             operands))))))
     (ensure-same
      (decimal-to-string new-result
                         :format (case operation
@@ -326,7 +331,7 @@ version being used: ~S, ignored version: ~S."
                      test-id))
     (ensure-same
      new-conditions conditions
-     :test #'equal
+     :test #'set-equal
      :ignore-multiple-values? t
      :report (format nil "Signalled conditions mismatch in test ~S."
                      test-id))
