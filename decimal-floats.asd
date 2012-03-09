@@ -16,10 +16,12 @@
   :licence "MIT style"
   :description "Implements decimal arithmetics as specified by standard
  http://speleotrove.com/decimal/"
-  :components ((:file "package")
-	       (:file "structure" :depends-on ("package"))
-               (:file "utils" :depends-on ("structure"))
-               (:file "conditions" :depends-on ("utils"))
-               (:file "rounding" :depends-on ("utils" "conditions"))
-               (:file "printing" :depends-on ("utils" "structure" "conditions" "rounding")))
+  :components ((:module "src"
+                :components ((:file "package")
+                             (:file "structure" :depends-on ("package"))
+                             (:file "utils" :depends-on ("structure"))
+                             (:file "conditions" :depends-on ("utils"))
+                             (:file "rounding" :depends-on ("utils" "conditions"))
+                             (:file "printing" :depends-on
+                                    ("utils" "structure" "conditions" "rounding")))))
   :depends-on (:alexandria))

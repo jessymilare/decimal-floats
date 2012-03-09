@@ -5,9 +5,6 @@
 
 (in-package :decimal-floats-tests)
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (print *compile-file-pathname*))
-
 (defun get-line-element (string state position)
   (let* ((first-char (char string position))
          (quote (find first-char '(#\' #\")))
