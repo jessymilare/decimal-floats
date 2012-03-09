@@ -13,11 +13,11 @@ decimal digits that a number that results from one of the arithmetics
 operations (except copy operations) will have. Any number with more digits
 will be rounded.")
 
-(defvar *rounding-mode* :round-half-up
+(defvar *rounding-mode* :half-up
   "The rounding mode to be used. It must be either a keyword or a function.
 
-Accepted keywords are :ROUND-HALF-UP, :ROUND-HALF-DOWN, :ROUND-DOWN,
-:ROUND-UP, :ROUND-HALF-EVEN, :ROUND-CEILING and :ROUND-FLOOR.
+Accepted keywords are :HALF-UP, :HALF-DOWN, :DOWN, :UP, :EVEN, :CEILING and
+:FLOOR.
 
 See http://speleotrove.com/decimal/damodel.html#refround for details.
 
@@ -30,16 +30,16 @@ Information on how to create a rounding mode function is in the file
   (declare (type (mod 11) discarded-digits)
            (type (unsigned-byte 12) last-digit)
            (type boolean signed-p))
-  (:round-half-up (>= discarded-digits 5))
-  (:round-half-down (> discarded-digits 5))
-  (:round-down nil)
-  (:round-up (plusp discarded-digits))
-  (:round-half-even (cond
+  (:half-up (>= discarded-digits 5))
+  (:half-down (> discarded-digits 5))
+  (:down nil)
+  (:up (plusp discarded-digits))
+  (:half-even (cond
                       ((> discarded-digits 5) t)
                       ((= discarded-digits 5) (oddp last-digit))))
-  (:round-ceiling (and (not signed-p) (plusp discarded-digits)))
-  (:round-floor (and signed-p (plusp discarded-digits)))
-  (:round-05-up (case last-digit
+  (:ceiling (and (not signed-p) (plusp discarded-digits)))
+  (:floor (and signed-p (plusp discarded-digits)))
+  (:05-up (case last-digit
                   (0 (plusp discarded-digits))
                   (5 (plusp discarded-digits)))))
 

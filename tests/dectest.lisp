@@ -216,9 +216,7 @@
   (case directive
     (precision (setf *testcase-precision* (parse-integer value)))
     (rounding (setf *testcase-rounding-mode*
-                    (intern (concatenate 'string
-                                         "ROUND-"
-                                         (nstring-upcase (substitute #\- #\_ value)))
+                    (intern (nstring-upcase (substitute #\- #\_ value))
                             :keyword)))
     (maxexponent (setf *testcase-maxexponent* (parse-integer value)))
     (minexponent (setf *testcase-minexponent* (parse-integer value)))
