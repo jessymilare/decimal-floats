@@ -75,22 +75,6 @@
 (defmacro %mul-addcf (x y d carry)       ; (carry,d):=d+x*y+carry)
   `(setf (values ,carry ,d) (%mul-addc ,d ,x ,y ,carry)))
 
-(macrolet ((def (name (var signed-p &rest args) &body body)
-	     `(defun ,(symbolicate "MAKE-" name) (,signed-p ,@args)
-                (let ((,var (%make-df nil 0)))
-                  ,@body
-                  (setf (df-negative-p ,var) ,signed-p)
-                  ,var))))
-  (def infinity (x signed-p)
-    (setf (df-infinity-p x) t))
-  (def qnan (x signed-p condition)
-    (setf (df-not-a-number-p x) t
-          (df-iexponent x) condition))
-  (def snan (x signed-p condition)
-    (setf (df-not-a-number-p x) t
-          (df-infinity-p x) t
-          (df-iexponent x) condition)))
-
 (defmacro def-var-get-and-with ((name default-value) &body body)
   (let ((find- (symbolicate 'find- name))
         (get- (symbolicate 'get- name))
@@ -133,7 +117,6 @@
 (defun prompt (stream control-string &rest format-arguments)
   (apply #'format stream control-string format-arguments)
   (read))
-
 
 (defun map-digits-array (function x-slots fsld lsfd update-p)
   ;; Maps the digits, from most significant one to least significant one

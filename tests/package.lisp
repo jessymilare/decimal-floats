@@ -4,4 +4,5 @@
 ;;; See the file license for license information.
 
 (defpackage :decimal-floats-tests
-  (:use :cl :alexandria :lift :yacc :decimal-floats))
+  (:use :cl :alexandria :lift :yacc :decimal-floats)
+  (:export #:load-all-tests #:run-all-tests))
