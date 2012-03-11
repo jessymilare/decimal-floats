@@ -5,69 +5,53 @@
 
 (in-package :decimal-floats)
 
-(defun $finite-p (x)
+(declaim (inline finite-p))
+(defun finite-p (x)
   (df-finite-p x))
 
-(defun $infinity-p (x)
+(declaim (inline infinity-p))
+(defun infinite-p (x)
   (df-infinity-p x))
 
-(defun $nan-p (x)
+(declaim (inline nan-p))
+(defun nan-p (x)
   (df-not-a-number-p x))
 
-(defun $snan-p (x)
+(declaim (inline snan-p))
+(defun snan-p (x)
   (and (df-not-a-number-p x)
-       (df-negative-p x)))
+       (df-infinity-p x)))
 
-(defun $qnan-p (x)
+(declaim (inline qnan-p))
+(defun qnan-p (x)
   (and (df-not-a-number-p x)
-       (not (df-negative-p x))))
+       (not (df-infinity-p x))))
 
-(defun $subnormal-p (x)
-  (df-subnormal-p x))
-
-(defun $normal-p (x)
-  (and (df-normal-p x)
+(declaim (inline subnormal-p))
+(defun subnormal-p (x)
+  (and (df-subnormal-p x)
        (not (df-zerop x))))
 
-(defun $zerop (x)
+(declaim (inline normal-p))
+(defun normal-p (x)
+  (and (df-normal-p x)))
+
+(declaim (inline zero-p))
+(defun zero-p (x)
   (and (df-normal-p x)
-       (df-zero-or-subnormal-p x)))
+       (df-zerop x)))
 
-(defun $minusp (x)
-  (and ($signed-p x)
-       (or (not (eql 0 (df-slots x)))
-	   ($infinity-p x))))
+(declaim (inline signed-p))
+(defun signed-p (x)
+  (df-negative-p x))
 
-(defun $signed-p (x)
-  (and (df-negative-p x)
-       (not (df-not-a-number-p x))'))
+(declaim (inline canonical-p))
+(defun canonical-p (x)
+  (decimal-float-p x))
 
-(defun $plusp (x)
-  (not (or (df-negative-p x)
-           (df-not-a-number-p x)
-           (df-zerop x))))
-
-(defsetf $logb #'(lambda (a b) ($scaleb b a)))
-
-(defun $canonical-p (x)
-  (with-inf-nan-handler (x :+infinity (eq x ++infinity+)
-			   :-infinity (eq x +-infinity+)
-			   :qnan (eq x +qnan+)
-			   :snan (eq x +snan+))
-    (zerop (df-carry-bit x))))
-
-(defun $logb (x)
-  (with-inf-nan-handler (x :infinity ++infinity+
-			   :qnan +qnan+ :snan +snan+)
-    (%logb x)))
-
-(defun $count-digits (x)
-  (with-inf-nan-handler (x :infinity ++infinity+
-			   :nan x)
-    (%count-digits x)))
-
-(defun $shift (x digits &optional (copy-p t))
-  (if ($finite-p x)
+#+nil
+(defun shift (x digits &optional (copy-p t))
+  (if (finite-p x)
       (multiple-value-bind (dslots digits) (floor digits +decimal-slot-digits+)
 	(let* ((y (if copy-p (copy-df x) x))
 	       (old-slots (length (df-slots y)))

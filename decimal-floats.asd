@@ -23,7 +23,9 @@
                              (:file "conditions" :depends-on ("utils"))
                              (:file "rounding" :depends-on ("utils" "conditions"))
                              (:file "printing" :depends-on
-                                    ("utils" "structure" "conditions" "rounding")))))
+                                    ("utils" "structure" "conditions" "rounding"))
+                             (:file "basic-operations" :depends-on
+                                    ("structure" "utils" "conditions")))))
   :depends-on (:alexandria))
 
 (defmethod perform ((op test-op) (system (eql (find-system :decimal-floats))))

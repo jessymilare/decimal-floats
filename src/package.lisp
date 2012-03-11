@@ -34,4 +34,8 @@
 
    ;; Printing
    #:*printing-format*
-   #:print-decimal #:decimal-to-string #:parse-decimal))
+   #:print-decimal #:decimal-to-string #:parse-decimal
+
+   ;; Basic Operations
+   #:finite-p #:infinite-p #:nan-p #:snan-p #:qnan-p #:subnormal-p #:normal-p
+   #:zero-p #:signed-p #:canonical-p ))
