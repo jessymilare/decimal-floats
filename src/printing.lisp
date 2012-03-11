@@ -73,10 +73,11 @@ The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
 (defun decimal-dispatch-macro-character (stream char depth)
   (declare (ignore char depth))
   (let ((string (with-output-to-string (output)
-                  (loop for char = (read-char stream nil #\  stream)
+                  (loop for char = (read-char stream nil #\  t)
                      while (or (alphanumericp char)
                                (member char '(#\+ #\- #\.)))
-                     do (write-char char output)))))
+                     do (write-char char output)
+                     finally (unread-char char stream)))))
     (with-condition-trap-enablers ('(decimal-invalid-operation))
       (parse-decimal string :round-p nil :trim-spaces t))))
 
@@ -135,7 +136,7 @@ funtion GET-PRINTING-FORMAT."
                            (fsld (%df-first-slot-last-digit extra))
                            (lsfd (%df-last-slot-first-digit extra)))
                        (%print-decimal stream (%df-count-digits length fsld lsfd)
-                                       slots nil nil nil nil))))))
+                                       fsld lsfd slots nil nil nil nil))))))
       (multiple-value-bind (digits exponent adj-exponent slots fsld lsfd zerop)
           (parse-info x)
         (setf (values printed-exp dot-position print-plus-p omit-minus-p)
@@ -195,7 +196,7 @@ funtion GET-PRINTING-FORMAT."
 
 (defun parse-decimal (string &key (start 0) (end (length string)) (round-p t)
                       (trim-spaces nil))
-  (with-operation (parse-decimal condition (subseq string start (or end (length string))))
+  (with-operation (parse-decimal condition (subseq string start end))
       ((decimal-conversion-syntax (make-nan nil nil)))
     (when trim-spaces
       (setf start (or (position-if (complement #'whitespace-p)
