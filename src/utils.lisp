@@ -118,13 +118,13 @@
   (apply #'format stream control-string format-arguments)
   (read))
 
-(defun map-digits-array (function x-slots fsld lsfd update-p)
+(defun map-digits-array (function slots fsld lsfd update-p)
   ;; Maps the digits, from most significant one to least significant one
   ;; and changes them in-place unless update-p is nil.
-  (let ((last-slot (1- (length x-slots))))
+  (let ((last-slot (1- (length slots))))
     (loop
        for nslot from last-slot downto 0
-       for slot = (aref x-slots nslot)
+       for slot = (aref slots nslot)
        for start = lsfd then (1- +decimal-slot-digits+)
        for end   = (if (= nslot 0)
                        fsld
@@ -143,61 +143,83 @@
                     (funcall function next-digit))
                 (setf slot next-slot)))
          (when update-p
-           (setf (aref x-slots nslot) (if (zerop nslot)
-                                          (* acc (aref +expt-10+ end))
-                                          acc)))))
-  x-slots)
+           (setf (aref slots nslot) (if (zerop nslot)
+                                        (* acc (aref +expt-10+ end))
+                                        acc)))))
+  slots)
 
-(defmacro with-inf-nan-handler ((var &key
-				     after before
-                                     (around '(call-next-handler))
-				     inf-before inf-after
-				     (inf-around '(call-next-handler))
-				     (+infinity nil +infinity-p)
-				     (-infinity nil -infinity-p)
-				     nan-before nan-after
-				     (nan-around '(call-next-handler))
-				     (qnan nil qnan-p)
-				     (snan nil snan-p))
-				&body body)
-  (check-type var symbol)
-  `(if (df-finite-p ,var)
-       (progn ,@body)
-       (flet ((call-next-handler ()
-                (prog2
-                    ,before
-                    (cond
-                      ((df-not-a-number-p ,var)
-                       (flet ((call-next-handler ()
-                                (prog2
-                                    ,nan-before
-                                    ,(if (or snan-p qnan-p)
-                                         `(cond
-                                            ;; in a NaN, this flag differs
-                                            ;; signaling NaN from quiet NaN
-                                            ((df-infinity-p ,var)
-                                             ,snan)
+(defmacro %with-inf-nan-handler ((extra &key
+                                        (any '(call-next-handler))
+                                        (infinity '(call-next-handler))
+                                        (+infinity nil)
+                                        (-infinity nil)
+                                        (nan '(call-next-handler))
+                                        (qnan '(call-next-handler))
+                                        (+qnan nil)
+                                        (-qnan nil)
+                                        (snan '(call-next-handler))
+                                        (+snan nil)
+                                        (-snan nil))
+                                 &body body)
+  (once-only (extra)
+    `(if (%df-finite-p ,extra)
+         (progn ,@body)
+         (flet ((call-next-handler ()
+                  (cond
+                    ((%df-not-a-number-p ,extra)
+                     (flet ((call-next-handler ()
+                              (cond
+                                ;; in a NaN, this flag differs
+                                ;; signaling NaN from quiet NaN
+                                ((%df-infinity-p ,extra)
+                                 (flet ((call-next-handler ()
+                                          (cond
+                                            ((%df-negative-p ,extra)
+                                             ,-snan)
                                             (t
-                                             ,qnan)))
-                                  ,nan-after)))
-                         (declare (inline call-next-handler))
-                         ,nan-around))
-                      ((df-infinity-p ,var)
-                       (flet ((call-next-handler ()
-                                (prog2
-                                    ,inf-before
-                                    ,(if (or +infinity-p -infinity-p)
-                                         `(cond
-                                            ((df-negative-p ,var)
-                                             ,-infinity)
+                                             ,+snan))))
+                                   (declare (inline call-next-handler))
+                                   ,snan))
+                                (t
+                                 (flet ((call-next-handler ()
+                                          (cond
+                                            ((%df-negative-p ,extra)
+                                             ,-qnan)
                                             (t
-                                             ,+infinity)))
-                                  ,inf-after)))
-                         (declare (inline call-next-handler))
-                         ,inf-around)))
-                  ,after)))
-         (declare (inline call-next-handler))
-         ,around)))
+                                             ,+qnan))))
+                                   (declare (inline call-next-handler))
+                                   ,qnan)))))
+                       (declare (inline call-next-handler))
+                       ,nan))
+                    (t
+                     (flet ((call-next-handler ()
+                              (cond
+                                ((%df-negative-p ,extra)
+                                 ,-infinity)
+                                (t
+                                 ,+infinity))))
+                       (declare (inline call-next-handler))
+                       ,infinity)))))
+           (declare (inline call-next-handler))
+           ,any))))
+
+(defmacro with-inf-nan-handler ((x &rest all-keys
+                                   &key
+                                   (any '(call-next-handler))
+                                   (infinity '(call-next-handler))
+                                   (+infinity nil)
+                                   (-infinity nil)
+                                   (nan '(call-next-handler))
+                                   (qnan '(call-next-handler))
+                                   (+qnan nil)
+                                   (-qnan nil)
+                                   (snan '(call-next-handler))
+                                   (+snan nil)
+                                   (-snan nil))
+                                &body body)
+  (declare (ignore any infinity +infinity -infinity nan
+                   qnan +qnan -qnan snan +snan -snan))
+  `(%with-inf-nan-handler ((df-extra ,x) ,@all-keys) ,@body))
 
 (declaim (inline resize-slots))
 (defun resize-slots (slots start end)

@@ -99,50 +99,50 @@ a standard format or a function.
 
 The standard printing format functions are accessible through the
 funtion GET-PRINTING-FORMAT."
-  (let (print-plus-p omit-minus-p printed-exp dot-position)
-    (with-inf-nan-handler
-        (x :inf-around (write-string (call-next-handler) stream)
-           :inf-before (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-                             (find-printing-format format 0 1 0 nil))
-           :+infinity (if (member print-plus-p '(t :coefficient))
-                          "+Infinity"
-                          "Infinity")
-           :-infinity (if (member omit-minus-p '(t :coefficient))
-                          "Infinity"
-                          "-Infinity")
-           :qnan (if (df-negative-p x)
-                     (if (not (member omit-minus-p '(t :coefficient)))
-                         "-NaN"
-                         "NaN")
-                     (if (member print-plus-p '(t :coefficient))
-                         "+NaN"
-                         "NaN"))
-           :snan (if (df-negative-p x)
-                     (if (not (member omit-minus-p '(t :coefficient)))
-                         "-sNaN"
-                         "sNaN")
-                     (if (member print-plus-p '(t :coefficient))
-                         "+sNaN"
-                         "sNaN"))
-           :nan-before (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-                             (find-printing-format format 0 0 0 nil))
-           ;; prints "NaN" or "sNaN", according to NaN type
-           :nan-around
-           (progn
-             (write-string (call-next-handler) stream)
-             (when nan-diagnostic-p
-               (when-let ((slots (df-slots x)))
-                 (%print-decimal stream (df-count-digits x) slots
-                                 (df-first-slot-last-digit x)
-                                 (df-last-slot-first-digit x)
-                                 nil nil nil nil)))))
+  (let ((extra (df-extra x))
+        print-plus-p omit-minus-p printed-exp dot-position)
+    (%with-inf-nan-handler
+        (extra :any
+               (progn
+                 (setf (values printed-exp dot-position print-plus-p omit-minus-p)
+                       (find-printing-format format 0 1 0 nil))
+                 (call-next-handler))
+               :infinity (write-string (call-next-handler) stream)
+               :+infinity (if (member print-plus-p '(t :coefficient))
+                              "+Infinity"
+                              "Infinity")
+               :-infinity (if (member omit-minus-p '(t :coefficient))
+                              "Infinity"
+                              "-Infinity")
+               :-qnan (if (member omit-minus-p '(t :coefficient))
+                          "NaN"
+                          "-NaN")
+               :+qnan (if (member print-plus-p '(t :coefficient))
+                          "+NaN"
+                          "NaN")
+               :-snan (if (member omit-minus-p '(t :coefficient))
+                          "sNaN"
+                          "-sNaN")
+               :+snan (if (member print-plus-p '(t :coefficient))
+                          "+sNaN"
+                          "sNaN")
+               :nan
+               (progn
+                 (write-string (call-next-handler) stream)
+                 (when nan-diagnostic-p
+                   (when-let ((slots (df-slots x)))
+                     (let ((length (length slots))
+                           (fsld (%df-first-slot-last-digit extra))
+                           (lsfd (%df-last-slot-first-digit extra)))
+                       (%print-decimal stream (%df-count-digits length fsld lsfd)
+                                       slots nil nil nil nil))))))
       (multiple-value-bind (digits exponent adj-exponent slots fsld lsfd zerop)
           (parse-info x)
         (setf (values printed-exp dot-position print-plus-p omit-minus-p)
               (find-printing-format format exponent adj-exponent digits zerop))
         ;; prints the negative sign, if any
         (cond
-          ((df-negative-p x)
+          ((%df-negative-p extra)
            (when (not (member omit-minus-p '(t :coefficient)))
              (write-char #\- stream)))
           ((member print-plus-p '(t :coefficient))
@@ -159,7 +159,7 @@ funtion GET-PRINTING-FORMAT."
   (with-output-to-string (stream)
     (apply #'print-decimal x stream keys)))
 
-(defun %print-decimal (stream digits x-slots fsld lsfd
+(defun %print-decimal (stream digits slots fsld lsfd
                        printed-exp dot-position print-plus-p omit-minus-p)
   (let* ((dot-position (or dot-position digits))
          (buffer (make-string (max (+ 2 digits (abs dot-position))
@@ -177,7 +177,7 @@ funtion GET-PRINTING-FORMAT."
                               (incf pos))
                             (setf (char buffer pos) (digit-char digit))
                             (incf pos))
-                        x-slots fsld lsfd nil)
+                        slots fsld lsfd nil)
       (when (> dot-position pos)
         (fill buffer #\0 :start pos :end dot-position)
         (setf pos dot-position))
