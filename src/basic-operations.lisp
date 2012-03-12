@@ -57,7 +57,7 @@
 (declaim (inline radix))
 (defun radix (x)
   (check-type x decimal-float)
-  10)
+  +base+)
 
 (declaim (inline decimal-class))
 (defun decimal-class (x)

@@ -65,8 +65,8 @@ arithmetics."
   (find-condition-flags flag-list))
 
 (def-var-get-and-with (condition-trap-enablers '(decimal-clamped decimal-division-by-zero
-                                              decimal-invalid-operation
-                                              decimal-overflow decimal-underflow))
+                                                 decimal-invalid-operation
+                                                 decimal-overflow decimal-underflow))
   "Holds information about which conditions should be signalled with the
 function ERROR when found. Use FIND-CONDITION-TRAP-ENABLERS to encode a list of
 symbols into a suitable format for this variable."
@@ -112,9 +112,8 @@ signalled during its execution."
                         finally (return mask))))
       (once-only (defined-result)
         `(let ((,local-error *decimal-local-error*)
-               (,condition-trap-enablers *condition-trap-enablers*)
-               (,condition-flags *condition-flags*))
-           (setf *condition-flags* (logior ,condition-flags
+               (,condition-trap-enablers *condition-trap-enablers*))
+           (setf *condition-flags* (logior *condition-flags*
                                            ,@(loop for condition-spec in conditions
                                                 for tests = (butlast condition-spec)
                                                 for bit-number in bit-numbers
