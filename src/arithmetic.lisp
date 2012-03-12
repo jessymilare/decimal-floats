@@ -32,9 +32,13 @@
                                                                       t))))
                                                      tail))
                                        (decimal-error-cond
-                                           ((let ((,result (copy-decimal ,result)))
-                                              (setf (df-infinity-p ,result) nil)
-                                              ,result))
+                                           ((cond
+                                              ((df-slots ,result)
+                                               (let ((,result (copy-decimal ,result)))
+                                                 (setf (df-infinity-p ,result) nil)
+                                                 ,result))
+                                              ((df-negative-p ,result) +-qnan+)
+                                              (t ++qnan+)))
                                          (decimal-invalid-operation))
                                        (call-next-handler)))
                             ,@keys)

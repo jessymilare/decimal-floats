@@ -197,7 +197,7 @@ funtion GET-PRINTING-FORMAT."
 (defun parse-decimal (string &key (start 0) (end (length string)) (round-p t)
                       (trim-spaces nil))
   (with-operation (parse-decimal condition (subseq string start end))
-      ((decimal-conversion-syntax (make-nan nil nil)))
+      ((decimal-conversion-syntax ++qnan+))
     (when trim-spaces
       (setf start (or (position-if (complement #'whitespace-p)
                                    string :start start :end end)
