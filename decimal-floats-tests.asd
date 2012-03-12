@@ -21,7 +21,6 @@
   :depends-on (:alexandria :lift :yacc :decimal-floats :trivial-garbage
                            :external-program :cl-fad))
 
-#+nil
 (defmethod perform :after ((op load-op) (system (eql (find-system :decimal-floats-tests))))
   (funcall (find-symbol "LOAD-ALL-TESTS" :decimal-floats-tests)))
 

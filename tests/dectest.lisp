@@ -145,7 +145,8 @@
 (defun get-operation (operation)
   (case operation
     ((tosci toeng apply) #'identity)
-    (samequantum #'same-quantum-p)
+    (samequantum (lambda (x y)
+                   (if (same-quantum-p x y) #$1 #$0)))
     (copy #'copy-decimal)
     (copyabs #'copy-abs)
     (copynegate #'copy-negate)

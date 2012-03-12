@@ -9,7 +9,7 @@
   (asdf:system-relative-pathname :decimal-floats "tests/"))
 
 (defparameter *files-to-test* '("base" "logb" "copy" "copyabs" "copynegate" "copysign"
-                                "class"))
+                                "class" "samequantum"))
 
 (defun download-file (url output)
   ;; Patches welcome ;)
