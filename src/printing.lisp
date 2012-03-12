@@ -221,7 +221,10 @@ funtion GET-PRINTING-FORMAT."
                  (signaling-p (when (or (not poss) (= poss 4))
                                 (setf pos poss)
                                 t)))
-            (cond ((or (null pos) (= pos 3) signaling-p)
+            (cond ((null pos) (if signaling-p
+                                  (if signed-p +-snan+ ++snan+)
+                                  (if signed-p +-qnan+ ++qnan+)))
+                  ((or (= pos 3) (= pos 4))
                    (let ((nan (make-nan signed-p signaling-p)))
                      ;; Read NaN diagnostic message.
                      (when pos
@@ -244,7 +247,7 @@ funtion GET-PRINTING-FORMAT."
                      nan))
                   ((or (string-equal "inf" string :start2 position :end2 end)
                        (string-equal "infinity" string :start2 position :end2 end))
-                   (make-infinity signed-p))
+                   (if signed-p +-infinity+ ++infinity+))
                   (t
                    (decimal-error-cond (nil :return-p t)
                      decimal-conversion-syntax))))

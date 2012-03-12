@@ -30,16 +30,15 @@
 (declaim (inline subnormal-p))
 (defun subnormal-p (x)
   (and (df-subnormal-p x)
-       (not (df-zerop x))))
+       (not (df-zero-p x))))
 
 (declaim (inline normal-p))
 (defun normal-p (x)
-  (and (df-normal-p x)))
+  (df-normal-p x))
 
 (declaim (inline zero-p))
 (defun zero-p (x)
-  (and (df-normal-p x)
-       (df-zerop x)))
+  (df-zero-p x))
 
 (declaim (inline signed-p))
 (defun signed-p (x)
@@ -47,29 +46,68 @@
 
 (declaim (inline canonical-p))
 (defun canonical-p (x)
-  (decimal-float-p x))
+  (check-type x decimal-float)
+  t)
 
-#+nil
-(defun shift (x digits &optional (copy-p t))
-  (if (finite-p x)
-      (multiple-value-bind (dslots digits) (floor digits +decimal-slot-digits+)
-	(let* ((y (if copy-p (copy-df x) x))
-	       (old-slots (length (df-slots y)))
-	       (old-lsd (df-last-slot-digits y))
-	       (new-lsd (- old-lsd digits))
-	       (slots (- old-slots
-			 dslots
-			 (if (minusp new-lsd)
-			     (progn
-			       (incf new-lsd +decimal-slot-digits+)
-			       1)
-			     0))))
-	  (setf (df-slots y)
-		(adjust-array (if (and +simple-array-adjustable-p+ copy-p)
-				  (copy-array (df-slots y))
-				  (df-slots y))
-			      slots
-			      :initial-element 0)
-		(df-last-slot-digits y) new-lsd)
-	  y))
+(declaim (inline canonical))
+(defun canonical (x)
+  (check-type x decimal-float)
+  x)
+
+(declaim (inline radix))
+(defun radix (x)
+  (check-type x decimal-float)
+  10)
+
+(declaim (inline decimal-class))
+(defun decimal-class (x)
+  (with-inf-nan-handler (x :+infinity :+infinity
+                           :-infinity :-infinity
+                           :qnan :nan
+                           :snan :snan)
+    (cond
+      ((df-zero-p x) (if (df-negative-p x) :-zero :+zero))
+      ((df-subnormal-p x) (if (df-negative-p x) :-subnormal :+subnormal))
+      ((df-negative-p x) :-normal)
+      (t :+normal))))
+
+(declaim (inline decimal-class-string))
+(defun decimal-class-string (x)
+  (with-inf-nan-handler (x :+infinity "+Infinity"
+                           :-infinity "-Infinity"
+                           :qnan "NaN"
+                           :snan "sNaN")
+    (cond
+      ((df-zero-p x) (if (df-negative-p x) "-Zero" "+Zero"))
+      ((df-subnormal-p x) (if (df-negative-p x) "-Subnormal" "+Subnormal"))
+      ((df-negative-p x) "-Normal")
+      (t "+Normal"))))
+
+(declaim (inline copy-abs))
+(defun copy-abs (x)
+  (if (df-negative-p x)
+      (let ((y (copy-decimal x)))
+        (setf (df-negative-p y) nil)
+        y)
       x))
+
+(declaim (inline copy-sign))
+(defun copy-sign (x y)
+  (if (eq (df-negative-p x) (df-negative-p y))
+      x
+      (let ((z (copy-decimal x)))
+        (setf (df-negative-p z) (df-negative-p y))
+        z)))
+
+(declaim (inline copy-negate))
+(defun copy-negate (x)
+  (let ((y (copy-decimal x)))
+    (setf (df-negative-p y) (not (df-negative-p x)))
+    y))
+
+(declaim (inline same-quantum-p))
+(defun same-quantum-p (x y)
+  (with-inf-nan-handler (x :nan (df-not-a-number-p y)
+                           :infinity (and (not (df-not-a-number-p y))
+                                          (df-infinity-p y)))
+    (= (df-exponent x) (df-exponent y))))

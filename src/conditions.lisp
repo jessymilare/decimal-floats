@@ -105,21 +105,15 @@ signalled during its execution."
   (with-gensyms (condition-trap-enablers condition-flags condition-var
                                          local-error return-function)
     (let* ((conditions (mapcar #'ensure-list conditions))
-           (bit-numbers (mapcar (compose #'get-condition-bit #'lastcar) conditions)))
+           (bit-numbers (mapcar (compose #'get-condition-bit #'lastcar) conditions))
+           (bit-mask (loop with mask = 0
+                        for bit in bit-numbers
+                        do (setf mask (logior mask (ash 1 bit)))
+                        finally (return mask))))
       (once-only (defined-result)
         `(let ((,local-error *decimal-local-error*)
                (,condition-trap-enablers *condition-trap-enablers*)
                (,condition-flags *condition-flags*))
-           (unless (zerop ,condition-trap-enablers)
-             ,@(loop for condition-spec in conditions
-                  for tests = (butlast condition-spec)
-                  for condition = (lastcar condition-spec)
-                  for bit-number in bit-numbers
-                  collect `(and (logbitp ,bit-number ,condition-trap-enablers)
-                                ,@tests
-                                (multiple-value-call #'signal-decimal-condition
-                                  (funcall ,local-error ',condition ,defined-result)
-                                  :return-p ,return-p))))
            (setf *condition-flags* (logior ,condition-flags
                                            ,@(loop for condition-spec in conditions
                                                 for tests = (butlast condition-spec)
@@ -127,6 +121,18 @@ signalled during its execution."
                                                 collect `(if (and ,@tests)
                                                              (ash 1 ,bit-number)
                                                              0))))
+           (when ,(if (cdr conditions)
+                      `(logtest ,condition-trap-enablers ,bit-mask)
+                      t)
+             (or ,@(loop for condition-spec in conditions
+                      for tests = (butlast condition-spec)
+                      for condition = (lastcar condition-spec)
+                      for bit-number in bit-numbers
+                      collect `(and (logbitp ,bit-number ,condition-trap-enablers)
+                                    ,@tests
+                                    (multiple-value-call #'signal-decimal-condition
+                                      (funcall ,local-error ',condition ,defined-result)
+                                      :return-p ,return-p)))))
            (locally ; avoid compiler-warnings of "deleting unreachable code"
                #+sbcl (declare (optimize sb-ext:inhibit-warnings))
                (or ,defined-result
@@ -220,7 +226,7 @@ numbers.")
              :report "Return another value."
              :interactive (lambda ()
                             (list (prompt t "Enter the value to be returned (it will be~
- parsed with parse-decimal):~%")))
+ parsed with PARSE-DECIMAL):~%")))
              (parse-decimal value :trim-spaces t)))))
     (if return-p
         (funcall return-function value)

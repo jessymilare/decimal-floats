@@ -5,6 +5,29 @@
 
 (in-package :decimal-floats)
 
+(define-constant ++infinity+ (let ((x (%make-df nil 0)))
+                               (setf (df-infinity-p x) t)
+                               x)
+  :test 'equalp)
+
+(define-constant +-infinity+ (let ((x (%make-df nil 0)))
+                               (setf (df-infinity-p x) t
+                                     (df-negative-p x) t)
+                               x)
+  :test 'equalp)
+
+(define-constant ++qnan+ (make-nan nil nil)
+  :test 'equalp)
+
+(define-constant +-qnan+ (make-nan t nil)
+  :test 'equalp)
+
+(define-constant ++snan+ (make-nan nil t)
+  :test 'equalp)
+
+(define-constant +-snan+ (make-nan t t)
+  :test 'equalp)
+
 ;;; Inpired by SBCL's sb-bignum source code.
 
 (declaim (inline %addc %subc %mul-addc))
@@ -108,7 +131,7 @@
     (multiple-value-bind (defaults declarations documentation)
         (parse-body body :documentation t :whole whole)
       `(defun ,name (,key ,@lambda-list)
-         ,@(when documentation `(,documentation))
+         ,@(ensure-list documentation)
          ,@declarations
          (case ,key
            ,@defaults
@@ -178,7 +201,8 @@
                                              ,-snan)
                                             (t
                                              ,+snan))))
-                                   (declare (inline call-next-handler))
+                                   (declare (inline call-next-handler)
+                                            (ignorable #'call-next-handler))
                                    ,snan))
                                 (t
                                  (flet ((call-next-handler ()
@@ -187,7 +211,8 @@
                                              ,-qnan)
                                             (t
                                              ,+qnan))))
-                                   (declare (inline call-next-handler))
+                                   (declare (inline call-next-handler)
+                                            (ignorable #'call-next-handler))
                                    ,qnan)))))
                        (declare (inline call-next-handler))
                        ,nan))
@@ -198,9 +223,11 @@
                                  ,-infinity)
                                 (t
                                  ,+infinity))))
-                       (declare (inline call-next-handler))
+                       (declare (inline call-next-handler)
+                                (ignorable #'call-next-handler))
                        ,infinity)))))
-           (declare (inline call-next-handler))
+           (declare (inline call-next-handler)
+                    (ignorable #'call-next-handler))
            ,any))))
 
 (defmacro with-inf-nan-handler ((x &rest all-keys

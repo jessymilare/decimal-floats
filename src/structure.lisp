@@ -95,7 +95,7 @@ digits.")
 (defstruct (decimal-float
 	     (:conc-name df-)
 	     (:constructor %make-df (slots iexponent))
-	     (:copier copy-df))
+	     (:copier copy-decimal))
   (extra 0 :type #.`(unsigned-byte ,(+ 4 (* 2 +num-of-digits-bits+))))
   (slots 1 :type (or null (simple-array decimal-slot)))
   (iexponent 0 :type iexponent))
@@ -173,9 +173,9 @@ digits.")
                   (defun ,df-name (,x)
                     (let* ,vars
                       (,%name ,@(mapcar #'first vars))))))))
-  (def zerop (x (iexponent (df-iexponent x))
-                (slots (df-slots x))
-                (length (length slots)))
+  (def zero-p (x (iexponent (df-iexponent x))
+                 (slots (df-slots x))
+                 (length (length slots)))
     (if (= iexponent +internal-e-min+)
         (every #'zerop slots)
         (zerop (aref slots (1- length)))))
@@ -276,7 +276,7 @@ digits.")
         (values digits exponent adj-exponent slots fsld lsfd
                 (zerop (aref slots (1- length)))))))
 
-(declaim (inline make-decimal-float make-infinity make-nan make-almost-infinity))
+(declaim (inline make-decimal-float make-nan))
 
 (defun make-decimal-float (iexponent slots &key (negative-p nil) (infinity-p nil)
                            (not-a-number-p nil) (subnormal-p nil)
@@ -288,12 +288,6 @@ digits.")
           (df-subnormal-p x) subnormal-p
           (df-first-slot-last-digit x) first-slot-last-digit
           (df-last-slot-first-digit x) last-slot-first-digit)
-    x))
-
-(defun make-infinity (signed-p)
-  (let ((x (%make-df nil 0)))
-    (setf (df-infinity-p x) t
-          (df-negative-p x) signed-p)
     x))
 
 (defun make-nan (signed-p signaling-p)

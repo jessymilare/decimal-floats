@@ -43,6 +43,7 @@ Information on how to create a rounding mode function is in the file
                   (0 (plusp discarded-digits))
                   (5 (plusp discarded-digits)))))
 
+(declaim (inline make-almost-infinity))
 (defun make-almost-infinity (signed-p)
   (multiple-value-bind (n-slots fsld) (ceiling *precision* +decimal-slot-digits+)
     (let* ((fsld (- fsld))
@@ -196,7 +197,7 @@ Information on how to create a rounding mode function is in the file
           (when infinite-p
             (return-from round-number
               ;; Overflow
-              (decimal-error-cond ((make-infinity signed-p))
+              (decimal-error-cond ((if signed-p +-infinity+ ++infinity+))
                 decimal-overflow decimal-inexact decimal-rounded)))))
       (let ((x (make-decimal-float iexponent slots :negative-p signed-p
                                    :last-slot-first-digit lsfd
@@ -229,7 +230,7 @@ Information on how to create a rounding mode function is in the file
       ((> iexponent +internal-e-max+)
        (decimal-error-cond
            ((if (find-rounding-mode *rounding-mode* 10 10 signed-p)
-                (make-infinity signed-p)
+                (if signed-p +-infinity+ ++infinity+)
                 (make-almost-infinity signed-p)))
          decimal-overflow decimal-inexact decimal-rounded))
       ((<= iexponent +internal-e-min+)

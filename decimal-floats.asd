@@ -25,6 +25,8 @@
                              (:file "printing" :depends-on
                                     ("utils" "structure" "conditions" "rounding"))
                              (:file "basic-operations" :depends-on
+                                    ("structure" "utils"))
+                             (:file "arithmetic" :depends-on
                                     ("structure" "utils" "conditions")))))
   :depends-on (:alexandria))
 

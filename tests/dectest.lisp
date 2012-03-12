@@ -1,3 +1,4 @@
+
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
 ;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
@@ -16,11 +17,11 @@
               (sub (subseq string (1+ position) end)
                    (concatenate 'string sub
                                 (subseq string 1+previous-end end))))
-            ((not (and (< (1+ end) length)
-                       (char= quote (char string (1+ end)))))
-             (values sub (1+ end))))
+             ((not (and (< (1+ end) length)
+                        (char= quote (char string (1+ end)))))
+              (values sub (1+ end))))
         (let* ((end (or (position #\Space string :start position)
-                         length))
+                        length))
                (sub (subseq string position end)))
           (values sub end)))))
 
@@ -143,7 +144,14 @@
 
 (defun get-operation (operation)
   (ecase operation
-    ((tosci toeng apply) #'identity)))
+    ((tosci toeng apply) #'identity)
+    (samequantum #'same-quantum-p)
+    (copy #'copy-decimal)
+    (copyabs #'copy-abs)
+    (copynegate #'copy-negate)
+    (copysign #'copy-sign)
+    (class #'decimal-class-string)
+    (t (symbol-function operation))))
 
 (defvar *testcase-precision* *precision*)
 (defvar *testcase-rounding-mode* *rounding-mode*)
