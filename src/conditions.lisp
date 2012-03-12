@@ -8,8 +8,8 @@
 (declaim (type fixnum *condition-flags* *condition-trap-enablers*))
 
 (define-constant +all-conditions+
-    '(decimal-clamped decimal-division-by-zero decimal-inexact decimal-invalid-operation
-      decimal-overflow decimal-rounded decimal-subnormal decimal-underflow)
+    '(decimal-invalid-operation decimal-division-by-zero decimal-underflow decimal-subnormal
+      decimal-overflow decimal-inexact decimal-rounded decimal-clamped)
   :test #'equal)
 
 (defvar *decimal-local-error*)
@@ -102,54 +102,52 @@ signalled during its execution."
 
 (defmacro decimal-error-cond ((defined-result &key return-p) &body conditions)
   (check-type return-p boolean)
-  (with-gensyms (condition-trap-enablers condition-flags condition-var
-                                         local-error return-function)
+  (with-gensyms (trap-enablers condition-var local-error return-function condition-name
+                               bit-mask get-condition-name)
     (let* ((conditions (mapcar #'ensure-list conditions))
-           (bit-numbers (mapcar (compose #'get-condition-bit #'lastcar) conditions))
-           (bit-mask (loop with mask = 0
-                        for bit in bit-numbers
-                        do (setf mask (logior mask (ash 1 bit)))
-                        finally (return mask))))
+           (bit-numbers (mapcar (compose #'get-condition-bit #'lastcar) conditions)))
       (once-only (defined-result)
-        `(let ((,local-error *decimal-local-error*)
-               (,condition-trap-enablers *condition-trap-enablers*))
-           (setf *condition-flags* (logior *condition-flags*
-                                           ,@(loop for condition-spec in conditions
-                                                for tests = (butlast condition-spec)
-                                                for bit-number in bit-numbers
-                                                collect `(if (and ,@tests)
-                                                             (ash 1 ,bit-number)
-                                                             0))))
-           (when ,(if (cdr conditions)
-                      `(logtest ,condition-trap-enablers ,bit-mask)
-                      t)
-             (or ,@(loop for condition-spec in conditions
-                      for tests = (butlast condition-spec)
-                      for condition = (lastcar condition-spec)
-                      for bit-number in bit-numbers
-                      collect `(and (logbitp ,bit-number ,condition-trap-enablers)
-                                    ,@tests
-                                    (multiple-value-call #'signal-decimal-condition
-                                      (funcall ,local-error ',condition ,defined-result)
-                                      :return-p ,return-p)))))
-           (locally ; avoid compiler-warnings of "deleting unreachable code"
-               #+sbcl (declare (optimize sb-ext:inhibit-warnings))
-               (or ,defined-result
-                   (cond
-                     ,@(loop for condition-spec in conditions
-                          for tests = (butlast condition-spec)
-                          for condition = (lastcar condition-spec)
-                          collect
-                            `((and ,@tests)
-                              ,(if return-p
-                                   `(multiple-value-bind (,condition-var ,return-function)
-                                        (funcall ,local-error ',condition nil)
-                                      (funcall ,return-function
-                                               (operation-defined-result ,condition-var)))
-                                   `(operation-defined-result
-                                     (funcall ,local-error ',condition nil)))))))))))))
+        `(flet ((,get-condition-name (,bit-mask)
+                  (let ((,condition-name (first (get-condition-flags ,bit-mask))))
+                    (case  ,condition-name
+                      ,@(loop for condition-spec in conditions
+                           for condition = (lastcar condition-spec)
+                           unless (member condition +all-conditions+) collect
+                             `(,(get-decimal-condition condition) ',condition))
+                      (t ,condition-name)))))
+           (declare (inline ,get-condition-name))
+           (let ((,local-error *decimal-local-error*)
+                 (,trap-enablers *condition-trap-enablers*)
+                 (,bit-mask (logior ,@(loop for condition-spec in conditions
+                                         for tests = (butlast condition-spec)
+                                         for bit-number in bit-numbers
+                                         collect (if tests
+                                                     `(if (and ,@tests)
+                                                          ,(ash 1 bit-number)
+                                                          0)
+                                                     (ash 1 bit-number))))))
+             (setf *condition-flags* (logior *condition-flags* ,bit-mask))
+             (let ((,condition-name (,get-condition-name
+                                     (logand ,trap-enablers ,bit-mask))))
+               (multiple-value-call #'signal-decimal-condition
+                 (funcall ,local-error ,condition-name
+                          ,defined-result)
+                 :return-p ,return-p))
+             (locally ; avoid compiler-warnings of "deleting unreachable code"
+                 #+sbcl (declare (optimize sb-ext:inhibit-warnings))
+                 (or ,defined-result
+                     (let ((,condition-name (,get-condition-name ,bit-mask)))
+                       ,(if return-p
+                            `(multiple-value-bind (,condition-var ,return-function)
+                                 (funcall ,local-error ,condition-name nil)
+                               (funcall ,return-function
+                                        (operation-defined-result ,condition-var)))
+                            `(operation-defined-result
+                              (funcall ,local-error ,condition-name nil))))))))))))
 
 (defgeneric get-condition-bit (condition))
+
+(defgeneric get-decimal-condition (condition))
 
 (macrolet ((def (name (parent) documentation
                       &optional (format-string documentation)
@@ -168,7 +166,11 @@ signalled during its execution."
                                        (operation-arguments condition)))))
                   (defmethod get-condition-bit ((condition (eql ',name)))
                     ,(or bit-number
-                         `(get-condition-bit ',parent)))))))
+                         `(get-condition-bit ',parent)))
+                  (defmethod get-decimal-condition ((condition (eql ',name)))
+                    ,(if bit-number
+                         'condition
+                         `(get-decimal-condition ',parent)))))))
 
   (def decimal-clamped (decimal-float-condition)
     "The exponent of the result has been constrained or altered due to internal

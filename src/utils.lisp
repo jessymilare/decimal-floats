@@ -214,7 +214,8 @@
                                    (declare (inline call-next-handler)
                                             (ignorable #'call-next-handler))
                                    ,qnan)))))
-                       (declare (inline call-next-handler))
+                       (declare (inline call-next-handler)
+                                (ignorable #'call-next-handler))
                        ,nan))
                     (t
                      (flet ((call-next-handler ()
