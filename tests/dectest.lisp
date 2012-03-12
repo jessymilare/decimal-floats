@@ -143,7 +143,7 @@
     function))
 
 (defun get-operation (operation)
-  (ecase operation
+  (case operation
     ((tosci toeng apply) #'identity)
     (samequantum #'same-quantum-p)
     (copy #'copy-decimal)

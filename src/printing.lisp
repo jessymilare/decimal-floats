@@ -103,12 +103,10 @@ funtion GET-PRINTING-FORMAT."
   (let ((extra (df-extra x))
         print-plus-p omit-minus-p printed-exp dot-position)
     (%with-inf-nan-handler
-        (extra :any
-               (progn
-                 (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-                       (find-printing-format format 0 1 0 nil))
-                 (call-next-handler))
-               :infinity (write-string (call-next-handler) stream)
+        (extra :infinity 
+               (progn (setf (values printed-exp dot-position print-plus-p omit-minus-p)
+                            (find-printing-format format 0 1 0 nil))
+                      (write-string (call-next-handler) stream))
                :+infinity (if (member print-plus-p '(t :coefficient))
                               "+Infinity"
                               "Infinity")
@@ -129,6 +127,8 @@ funtion GET-PRINTING-FORMAT."
                           "sNaN")
                :nan
                (progn
+                 (setf (values printed-exp dot-position print-plus-p omit-minus-p)
+                       (find-printing-format format 0 0 0 nil))
                  (write-string (call-next-handler) stream)
                  (when nan-diagnostic-p
                    (when-let ((slots (df-slots x)))
@@ -136,7 +136,7 @@ funtion GET-PRINTING-FORMAT."
                            (fsld (%df-first-slot-last-digit extra))
                            (lsfd (%df-last-slot-first-digit extra)))
                        (%print-decimal stream (%df-count-digits length fsld lsfd)
-                                       fsld lsfd slots nil nil nil nil))))))
+                                       slots fsld lsfd nil nil nil nil))))))
       (multiple-value-bind (digits exponent adj-exponent slots fsld lsfd zerop)
           (parse-info x)
         (setf (values printed-exp dot-position print-plus-p omit-minus-p)
