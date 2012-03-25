@@ -5,6 +5,10 @@
 *.fas
 *.FAS
 *~
+*.o
+*.so
+cffi/decNumber/Makefile
+cffi/Makefile.opts
 tests/dectest
 tests/dectest.zip
 tests/output

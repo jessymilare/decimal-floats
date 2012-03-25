@@ -1,0 +1,61 @@
+### -*- Mode: Makefile -*-
+
+### File modified from Lispbuilder-SDL library
+### Author: Matthew Danish <$@
+### Modified by: Luke Crook <luke@balooga.com>
+
+include ../Makefile.opts
+
+decNumberObjFiles= decNumber.$(OBJ_SUFFIX) decContext.$(OBJ_SUFFIX) \
+    decimal32.$(OBJ_SUFFIX) decimal64.$(OBJ_SUFFIX) decimal128.$(OBJ_SUFFIX) \
+    decPacked.$(OBJ_SUFFIX) \
+    decSingle.$(OBJ_SUFFIX) decDouble.$(OBJ_SUFFIX) decQuad.$(OBJ_SUFFIX)
+
+compile=$(CC) $(DECNUMBER_CFLAGS)
+
+
+all: $(SHLIB_NAME).$(SHLIB_SUFFIX)
+
+decNumber.$(OBJ_SUFFIX): decNumber.c decContext.h decNumber.h decNumberLocal.h
+	$(compile) $(DEF_DECNUMDIGITS) decNumber.c -o $@
+
+decContext.$(OBJ_SUFFIX): decContext.c decContext.h decNumberLocal.h
+	$(compile) decContext.c -o $@
+
+decimal32.$(OBJ_SUFFIX): decimal32.c decContext.h decNumber.h decNumberLocal.h decimal32.h
+	$(compile) decimal32.c -o $@
+
+decimal64.$(OBJ_SUFFIX): decimal64.c decContext.h decNumber.h decNumberLocal.h decimal64.h
+	$(compile) decimal64.c -o $@
+
+decimal128.$(OBJ_SUFFIX): decimal128.c decContext.h decNumber.h decNumberLocal.h decimal128.h
+	$(compile) decimal128.c -o $@
+
+decPacked.$(OBJ_SUFFIX): decPacked.c decContext.h decNumber.h decPacked.h decNumberLocal.h
+	$(compile) decPacked.c -o $@
+
+
+decSingle.$(OBJ_SUFFIX): decSingle.c decContext.h decSingle.h decNumberLocal.h \
+    decCommon.c
+	$(compile) decSingle.c -o $@
+
+decDouble.$(OBJ_SUFFIX): decDouble.c decContext.h decDouble.h decNumberLocal.h \
+    decCommon.c decBasic.c
+	$(compile) decDouble.c -o $@
+
+decQuad.$(OBJ_SUFFIX): decQuad.c decContext.h decQuad.h decNumberLocal.h \
+    decCommon.c decBasic.c
+	$(compile) decQuad.c -o $@
+
+
+$(SHLIB_NAME).$(SHLIB_SUFFIX): $(decNumberObjFiles)
+	$(CC) $(DECNUMBER_LDFLAGS) -o $@ $(decNumberObjFiles)
+
+clean:
+	rm -f *.$(SHLIB_SUFFIX) *.$(OBJ_SUFFIX)
+
+install:
+	cp -f $(SHLIB_NAME).$(SHLIB_SUFFIX) $(DECNUMBER_BIN_DIR)
+
+uninstall:
+	rm $(DECNUMBER_BIN_DIR)$(SHLIB_NAME).$(SHLIB_SUFFIX)

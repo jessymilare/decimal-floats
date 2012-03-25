@@ -1,0 +1,16 @@
+#### -*- Mode: Makefile -*-
+#### Makefile for Darwin/PPC systems
+
+### Not tested!
+
+CC=gcc
+SHFLAGS=-dynamiclib
+CFLAGS+=$(SHFLAGS) -Wall
+LDFLAGS+=$(SHFLAGS) -Wl,-soname,$(SHLIB_NAME).$(SHLIB_SUFFIX)
+OBJ_SUFFIX=o
+SHLIB_SUFFIX=dylib
+LIB_NAME=decnumber
+SHLIB_NAME=lib$(LIB_NAME)
+
+DECNUMBER_CFLAGS=$(CFLAGS) -D DECLITEND=$(DECLITEND)
+DECNUMBER_LDFLAGS=$(LDFLAGS) -D DECLITEND=$(DECLITEND)

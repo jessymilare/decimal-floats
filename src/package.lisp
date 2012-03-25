@@ -3,6 +3,8 @@
 ;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
+(in-package :cl-user)
+
 (defpackage :decimal-floats
   (:use :cl :alexandria)
   (:export
