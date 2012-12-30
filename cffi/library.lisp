@@ -6,7 +6,7 @@
 (in-package :dec-number-cffi)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defconstant +decdpun+ 3)
+  (defconstant +decdpun+ 9)
 
   (defparameter *dec-number-bin-dir*
     (asdf:system-relative-pathname :decimal-floats "bin/"))
@@ -16,7 +16,7 @@
 
   (defparameter *dec-number-make-environment*
     `(("DECLITEND" . #+little-endian 1 #+big-endian 0)
-      #+nil ("DECDPUN" . ,+decdpun+)
+      ("DECDPUN" . ,+decdpun+)
       ("DECNUMBER_BIN_DIR" . ,(namestring *dec-number-bin-dir*))
       ("DECSYSTEM" . #+darwin "darwin" #+linux "linux"
                    #+windows "mingw" #+bsd "fbsd")))

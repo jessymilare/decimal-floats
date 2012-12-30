@@ -39,9 +39,10 @@
   /* units array in the structure is determined by the following      */
   /* constant.  This must not be changed without recompiling the      */
   /* decNumber library modules. */
-
-  #define DECDPUN 3           /* DECimal Digits Per UNit [must be >0  */
+  #if !defined(DECDPUN)
+    #define DECDPUN 3         /* DECimal Digits Per UNit [must be >0  */
                               /* and <10; 3 or powers of 2 are best]. */
+  #endif
 
   /* DECNUMDIGITS is the default number of digits that can be held in */
   /* the structure.  If undefined, 1 is assumed and it is assumed     */

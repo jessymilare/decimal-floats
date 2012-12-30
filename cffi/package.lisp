@@ -109,9 +109,9 @@
            #:number-error #:rounding #:words #:shorts #:bytes #:double
            #:context #:conditions #:default-context
            
-           #:load-number-library #:run-make-number
-           #:*number-bin-dir* #:*number-make-dir*
-           #:*number-make-environment*
+           #:load-dec-number-library #:run-dec-make-number
+           #:*dec-number-bin-dir* #:*dec-number-make-dir*
+           #:*dec-number-make-environment*
            
            #:number-unit #:+number-unit-size+
            #:+number-pmax+ #:+number-emax+

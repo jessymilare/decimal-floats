@@ -13,3 +13,5 @@ tests/dectest
 tests/dectest.zip
 tests/output
 tests/tests-output
+.directory
+
