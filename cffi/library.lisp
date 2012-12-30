@@ -37,6 +37,7 @@
   (defun load-dec-number-library ()
     (handler-case (load-foreign-library 'dec-number-library)
       (load-foreign-library-error ()
+        (run-make-dec-number "uninstall")
         (run-make-dec-number "clean")
         (assert (and (run-make-dec-number "all")
                      (run-make-dec-number "install")))

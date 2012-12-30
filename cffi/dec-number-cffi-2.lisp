@@ -75,13 +75,14 @@
                                       (,%function ,',type ,@args)))))
                             (defun ,function (,type ,@args)
                               ,@body))))))
+
+  (rename context-default (context type))
   
   (rename number-to-int32 (number context))
   (rename number-to-uint32 (number context))
   (rename number-class (number context))
   (rename number-class-to-string (class))
   (rename number-version ())
-  (rename number-from-string (number string context))
 
   (renames (double quad)
            (is-canonical is-finite is-infinite is-nan is-negative is-signed is-zero) ())
@@ -90,7 +91,6 @@
   (renames (double quad) (class class-string digits) ())
   (renames (single double quad) (get-exponent) ())
   (renames (single double quad) (set-exponent) (context exponent))
-  (renames (single double quad) (from-string) (string context))
 
   (defs (double quad) is-qnan ()
     (and (call is-nan) (not (call is-signalling))))
@@ -233,9 +233,9 @@
   (defun alloc-form (type digits)
     (case type
       (number `(cffi-sys:%foreign-alloc
-                (+ (- (foreign-type-size 'decnumber)
-                      +decnumber-unit-size+)
-                   (ceiling ,digits +decnumber-unit-size+))))
+                (+ (foreign-type-size 'decnumber)
+                   (* (1- (ceiling ,digits +decdpun+))
+                      +decnumber-unit-size+))))
       (t `(foreign-alloc ',type)))))
 
 (macrolet
@@ -256,6 +256,9 @@
                         `(def ,function (,type ,vars ,@args)
                            (locally (declare (inline ,%function))
                              (,%function ,type ,@vars ,@args)))))))))
+
+  ;; Convertion from string
+  (defs (number single double quad) (from-string) 0 (string context))
 
   ;; One argument operations
   (defs (number double quad) (abs invert logb minus next-minus next-plus plus

@@ -1,9 +1,9 @@
 #### -*- Mode: Makefile -*-
 
 CC=gcc
-SHFLAGS=-shared -fPIC -O3
-CFLAGS+=$(SHFLAGS) -Wall
-LDFLAGS+=$(SHFLAGS) -Wl,-soname,$(SHLIB_NAME).$(SHLIB_SUFFIX)
+SHFLAGS=-fPIC -O3
+CFLAGS+=$(SHFLAGS) -Wall -g -c
+LDFLAGS+=$(SHFLAGS) -shared -Wl,-soname,$(SHLIB_NAME).$(SHLIB_SUFFIX)
 OBJ_SUFFIX=o
 SHLIB_SUFFIX=so
 LIB_NAME=decnumber

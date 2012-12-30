@@ -3,9 +3,9 @@
 ### Not tested!
 
 CC=gcc
-SHFLAGS=-shared -O3
-CFLAGS+=$(SHFLAGS) -Wall
-LDFLAGS+=$(SHFLAGS) -L../bin/ -Wl,-soname,$(SHLIB_NAME).$(SHLIB_SUFFIX)
+SHFLAGS=-O3
+CFLAGS+= $(SHFLAGS) -Wall -g -c
+LDFLAGS+= $(SHFLAGS) -shared -L../bin/ -Wl,-soname,$(SHLIB_NAME).$(SHLIB_SUFFIX)
 OBJ_SUFFIX=o
 SHLIB_SUFFIX=dll
 LIB_NAME=decNumber

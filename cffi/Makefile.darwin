@@ -4,9 +4,9 @@
 ### Not tested!
 
 CC=gcc
-SHFLAGS=-dynamiclib
-CFLAGS+=$(SHFLAGS) -Wall
-LDFLAGS+=$(SHFLAGS) -Wl,-soname,$(SHLIB_NAME).$(SHLIB_SUFFIX)
+SHFLAGS=
+CFLAGS+= $(SHFLAGS) -Wall -g -c
+LDFLAGS+= $(SHFLAGS) -dynamiclib -Wl,-soname,$(SHLIB_NAME).$(SHLIB_SUFFIX)
 OBJ_SUFFIX=o
 SHLIB_SUFFIX=dylib
 LIB_NAME=decnumber

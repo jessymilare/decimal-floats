@@ -177,7 +177,7 @@
   (:pos-inf 9))
 
 (defcenum (default-context :uint32)
-  (:base-context        0)
+  (:base-context    0)
   (:single-context 32)
   (:double-context 64)
   (:quad-context  128))
@@ -1164,7 +1164,7 @@
 
 (defcfun ("decContextClearStatus" %context-clear-status) :pointer
   (arg1 :pointer)
-  (arg2 conditions :uint32))
+  (arg2 conditions))
 
 (defcfun ("decNumberSameQuantum" %number-same-quantum) :pointer
   (arg1 :pointer)

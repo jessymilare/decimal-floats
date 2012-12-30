@@ -20,7 +20,7 @@
            #:number-add #:decimal-64-canonical #:double-invert
            #:quad-remainder-near #:double-rotate #:number-power
            #:double-canonical #:decimal-64-to-string #:quad-show
-           #:double-remainder-near #:packed-from-number #:number-copy
+           #:double-remainder-near #:number-to-packed #:number-copy
            #:double-is-positive #:number-is-subnormal #:number-multiply
            #:quad-or #:double-next-plus #:quad-copy
            #:quad-to-u-int-32 #:decimal-64-is-canonical #:decimal-32-from-string
@@ -67,7 +67,7 @@
            #:double-to-int-32-exact #:double-copy #:context-test-status
            #:quad-max #:quad-copy-abs #:number-version
            #:number-max-mag #:double-or #:single-set-coefficient
-           #:quad-radix #:number-set-bcd #:quad-to-eng-string
+           #:quad-radix #:number-from-bcd #:quad-to-eng-string
            #:double-and #:double-compare-signal #:number-zero
            #:number-square-root #:number-class-to-string
            #:class #:decimal-64-to-eng-string #:number-shift
@@ -89,7 +89,7 @@
            #:quad-is-positive #:number-invert #:number-rotate
            #:number-min #:context-get-status #:quad-quantize
            #:quad-from-packed-checked #:single-to-bcd #:single
-           #:double-divide-integer #:number-get-bcd #:double-set-coefficient
+           #:double-divide-integer #:number-to-bcd #:double-set-coefficient
            #:number-max #:quad-compare-total #:number-fma
            #:number-compare #:quad-shift #:quad-is-signalling
            #:double-to-u-int-32-exact #:quad-to-string #:double-min-mag
@@ -103,7 +103,7 @@
            #:decimal-128-from-number #:decimal-128 #:double-scale-b
            #:quad-to-int-32-exact #:quad #:double-to-packed
            #:double-set-exponent #:decimal-32-canonical #:double-is-finite
-           #:decimal-32-to-eng-string #:decimal-32 #:packed-to-number
+           #:decimal-32-to-eng-string #:decimal-32 #:number-from-packed
            #:lsu #:bits #:exponent #:number #:double-to-integral-value
            #:clamp #:status #:traps #:round #:emin #:emax #:digits
            #:number-error #:rounding #:words #:shorts #:bytes #:double
@@ -113,9 +113,9 @@
            #:*dec-number-bin-dir* #:*dec-number-make-dir*
            #:*dec-number-make-environment*
            
-           #:number-unit #:+number-unit-size+
-           #:+number-pmax+ #:+number-emax+
-           #:+number-emin+ #:+number-exponent-digits+ 
+           #:decnumber-unit #:+decnumber-unit-size+
+           #:+decnumber-pmax+ #:+decnumber-emax+
+           #:+decnumber-emin+ #:+decnumber-exponent-digits+
            #:+single-size+ #:+single-pmax+ #:+single-emin+
            #:+single-emax+ #:+single-string-size+
            #:+double-bytes+ #:+double-pmax+ #:+double-emin+
