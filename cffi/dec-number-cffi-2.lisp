@@ -61,20 +61,43 @@
                        (loop for suffix in suffixes
                           for function = (symbolicate type '- suffix)
                           collect
-                            `(rename ,function (,type ,@args))))))
-           (defs (types suffix args &body body)
+                            `(rename ,function (,type ,@args))))
+                ,@(unless (member 'single types)
+                          (loop for suffix in suffixes
+                             for function = (symbolicate 'single '- suffix)
+                             for %function = (symbolicate '% 'double '- suffix)
+                             collect
+                               `(progn
+                                  (declaim (inline ,function))
+                                  (defun ,function (single ,@args)
+                                    (let ((double (single-to-double single)))
+                                      (unwind-protect (,%function double ,@args)
+                                        (foreign-free double)))))))))
+           (defs (types suffix &body body)
                `(progn
                   ,@(loop for type in types
                        for function = (symbolicate type '- suffix)
-                       for bytes = (symbol-value (symbolicate '+ type '-bytes+))
                        collect
                          `(macrolet
-                              ((call (suffix &rest args)
+                              ((call (suffix)
                                  (let ((%function (symbolicate '% ',type '- suffix)))
                                    `(locally (declare (inline ,%function))
-                                      (,%function ,',type ,@args)))))
-                            (defun ,function (,type ,@args)
-                              ,@body))))))
+                                      (,%function ,',type)))))
+                            (declaim (inline ,function))
+                            (defun ,function (,type)
+                              ,@body)))
+                  ,(unless (member 'single types)
+                           (let ((function (symbolicate 'single '- suffix)))
+                             `(macrolet
+                                  ((call (suffix)
+                                     (let ((%function (symbolicate '% 'double '- suffix)))
+                                       `(locally (declare (inline ,%function))
+                                          (,%function double)))))
+                                (declaim (inline ,function))
+                                (defun ,function (single)
+                                  (let ((double (single-to-double single)))
+                                    (unwind-protect (progn ,@body)
+                                      (foreign-free double))))))))))
 
   (rename context-default (context type))
   
@@ -92,13 +115,13 @@
   (renames (single double quad) (get-exponent) ())
   (renames (single double quad) (set-exponent) (context exponent))
 
-  (defs (double quad) is-qnan ()
+  (defs (double quad) is-qnan
     (and (call is-nan) (not (call is-signalling))))
 
-  (defs (double quad) is-snan ()
+  (defs (double quad) is-snan
     (call is-signalling))
 
-  (defs (double quad) is-special ()
+  (defs (double quad) is-special
     (not (call is-finite))))
 
 (defun mem-ref-uint (pointer bytes)
@@ -162,7 +185,8 @@
                           ,format-to-number)
                    (ftype (function (foreign-pointer foreign-pointer)
                                     foreign-pointer)
-                          ,format-from-number))
+                          ,format-from-number)
+                   (inline ,format-to-number ,format-from-number))
                   (defun ,format-to-number (,format)
                     (declare (inline ,%size-to-number))
                     (let ((number (foreign-alloc ',number-format)))
@@ -240,9 +264,11 @@
 
 (macrolet
     ((def (function (type vars &rest args) &body body)
-       `(defun ,function (,@vars ,@args)
-          (let ((,type ,(alloc-form type `(foreign-slot-value context 'context 'digits))))
-            ,@body)))
+       `(progn
+          (declaim (inline ,function))
+          (defun ,function (,@vars ,@args)
+            (let ((,type ,(alloc-form type '(foreign-slot-value context 'context 'digits))))
+              ,@body))))
      (defs (types suffixes n-args args)
        (let ((vars (loop for i below n-args
                       collect (symbolicate 'x (princ-to-string i)))))
@@ -254,8 +280,26 @@
                       for %function = (symbolicate '% function)
                       collect
                         `(def ,function (,type ,vars ,@args)
-                           (locally (declare (inline ,%function))
-                             (,%function ,type ,@vars ,@args)))))))))
+                           (declare (inline ,%function))
+                           (,%function ,type ,@vars ,@args))))
+            ,@(unless (member 'single types)
+                      (loop for suffix in suffixes
+                         for function = (symbolicate 'single '- suffix)
+                         for %function = (symbolicate '% 'double '- suffix)
+                         collect
+                           `(def ,function (single ,vars ,@args)
+                              (declare (inline ,%function))
+                              (let ((double (foreign-alloc 'double)))
+                                (unwind-protect
+                                     (double-to-single
+                                      (,%function
+                                       double
+                                       ,@(mapcar (lambda (var)
+                                                   `(single-to-double ,var context))
+                                                 vars)
+                                       ,@args)
+                                      context)
+                                  (foreign-free double))))))))))
 
   ;; Convertion from string
   (defs (number single double quad) (from-string) 0 (string context))
@@ -299,33 +343,35 @@
     (%packed-to-number bcd length scale number)))
 
 (macrolet ((def (type suffix new-suffix args &key scale-p)
-             (let ((function (symbolicate type '- new-suffix))
-                   (%function (symbolicate '% type '- suffix))
-                   (array-length
-                    (case type
-                      (number '(foreign-slot-value number 'decnumber 'digits))
-                      (t (symbolicate '+ type '-pmax+)))))
-               (if (eq new-suffix 'to-packed)
-                   (setf array-length `(ceiling ,array-length 2)))
-               `(defun ,function (,type)
-                  (let* ((length ,array-length)
-                         (array (make-shareable-byte-vector length)))
-                    (declare (inline ,%function))
-                    (with-pointer-to-vector-data (bcd array)
-                      ,(if (member 'exponent args)
-                           `(with-foreign-object (exponent :int32)
-                              (let ((signed-p (,%function ,@args)))
-                                (,%function ,@args)
-                                (values array ,(if scale-p
-                                                   `(- (mem-ref exponent :int32))
-                                                   `(mem-ref exponent :int32))
-                                        signed-p)))
-                           `(progn
-                              (,%function ,@args)
-                              (values array
-                                      (foreign-slot-value
-                                       number 'decnumber 'exponent)
-                                      (number-is-signed number))))))))))
+               (let ((function (symbolicate type '- new-suffix))
+                     (%function (symbolicate '% type '- suffix))
+                     (array-length
+                      (case type
+                        (number '(foreign-slot-value number 'decnumber 'digits))
+                        (t (symbolicate '+ type '-pmax+)))))
+                 (if (eq new-suffix 'to-packed)
+                     (setf array-length `(ceiling ,array-length 2)))
+                 `(progn
+                    (declaim (inline ,function))
+                    (defun ,function (,type)
+                      (let* ((length ,array-length)
+                             (array (make-shareable-byte-vector length)))
+                        (declare (inline ,%function))
+                        (with-pointer-to-vector-data (bcd array)
+                          ,(if (member 'exponent args)
+                               `(with-foreign-object (exponent :int32)
+                                  (let ((signed-p (,%function ,@args)))
+                                    (,%function ,@args)
+                                    (values array ,(if scale-p
+                                                       `(- (mem-ref exponent :int32))
+                                                       `(mem-ref exponent :int32))
+                                            signed-p)))
+                               `(progn
+                                  (,%function ,@args)
+                                  (values array
+                                          (foreign-slot-value
+                                           number 'decnumber 'exponent)
+                                          (number-is-signed number)))))))))))
   (def number get-bcd to-bcd (number bcd))
   (def single to-bcd  to-bcd (single exponent bcd))
   (def double to-bcd  to-bcd (double exponent bcd))
@@ -337,40 +383,43 @@
   (def quad   to-packed to-packed (quad   exponent bcd)))
 
 (macrolet ((def (type suffix new-suffix args &key scale-p)
-             (let ((function (symbolicate type '- new-suffix))
-                   (%function (symbolicate '% type '- suffix))
-                   (new-args (remove 'length
-                                     (substitute 'exponent 'ptr-exp
-                                                 (substitute 'array 'bcd args)))))
-               (unless (member 'exponent new-args)
-                 (nconcf new-args '(exponent)))
-               `(defun ,function (array exponent
-                                  ,@(if (eq 'from-bcd new-suffix)
-                                        `(signed-p)))
-                    (declare (inline ,%function))
-                  (with-pointer-to-vector-data (bcd array)
-                    (let* ,(if (eq 'number type)
-                               `((length (array-dimension array 0))
-                                 (,type ,(alloc-form type (if (eq new-suffix 'from-packed)
-                                                              '(* length 2)
-                                                              'length))))
-                               `((,type ,(alloc-form type 0))))
-                      ,(if (member 'ptr-exp args)
-                           `(with-foreign-object (ptr-exp :int32)
-                              (setf (mem-ref ptr-exp :int32)
-                                    ,(if scale-p '(- exponent) 'exponent))
-                              ,(if (eq 'from-bcd new-suffix)
-                                   `(let ((sign (if signed-p +decfloat-neg+ 0)))
-                                      (,%function ,@args sign))
-                                   `(,%function ,@args)))
-                           `(progn
-                              (setf (foreign-slot-value number 'decnumber 'exponent)
-                                    exponent)
-                              (prog1
-                                  (,%function ,@args)
-                                (if signed-p
-                                    (setf (foreign-slot-value number 'decnumber 'bits)
-                                          +flag-neg+)))))))))))
+               (let ((function (symbolicate type '- new-suffix))
+                     (%function (symbolicate '% type '- suffix))
+                     (new-args (remove 'length
+                                       (substitute 'exponent 'ptr-exp
+                                                   (substitute 'array 'bcd args)))))
+                 (unless (member 'exponent new-args)
+                   (nconcf new-args '(exponent)))
+                 `(progn
+                    (declaim (inline ,function))
+                    (defun ,function (array exponent
+                                      ,@(if (eq 'from-bcd new-suffix)
+                                            `(signed-p)))
+                      (declare (inline ,%function))
+                      (with-pointer-to-vector-data (bcd array)
+                        (let* ,(if (eq 'number type)
+                                   `((length (array-dimension array 0))
+                                     (,type ,(alloc-form type
+                                                         (if (eq new-suffix 'from-packed)
+                                                             '(* length 2)
+                                                             'length))))
+                                   `((,type ,(alloc-form type 0))))
+                          ,(if (member 'ptr-exp args)
+                               `(with-foreign-object (ptr-exp :int32)
+                                  (setf (mem-ref ptr-exp :int32)
+                                        ,(if scale-p '(- exponent) 'exponent))
+                                  ,(if (eq 'from-bcd new-suffix)
+                                       `(let ((sign (if signed-p +decfloat-neg+ 0)))
+                                          (,%function ,@args sign))
+                                       `(,%function ,@args)))
+                               `(progn
+                                  (setf (foreign-slot-value number 'decnumber 'exponent)
+                                        exponent)
+                                  (prog1
+                                      (,%function ,@args)
+                                    (if signed-p
+                                        (setf (foreign-slot-value number 'decnumber 'bits)
+                                              +flag-neg+))))))))))))
   (declare (optimize #+sbcl sb-ext:inhibit-warnings))
   
   (def number set-bcd  from-bcd (number bcd length))

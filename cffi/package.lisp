@@ -108,6 +108,16 @@
            #:clamp #:status #:traps #:round #:emin #:emax #:digits
            #:number-error #:rounding #:words #:shorts #:bytes #:double
            #:context #:conditions #:default-context
+           #:single-abs #:single-invert #:single-logb #:single-minus
+           #:single-next-minus #:single-next-plus #:single-plus #:single-reduce
+           #:single-to-integral-exact #:single-copy-abs #:single-copy-negate
+           #:single-copy-sign #:single-add #:single-and #:single-divide
+           #:single-divide-integer #:single-max #:single-max-mag #:single-multiply
+           #:single-next-toward #:single-or #:single-quantize #:single-remainder
+           #:single-remainder-near #:single-rotate #:single-scaleb #:single-shift
+           #:single-subtract #:single-xor #:single-compare #:single-compare-signal
+           #:single-compare-total #:single-compare-total-mag #:single-fma
+           #:single-to-integral-value
            
            #:load-dec-number-library #:run-dec-make-number
            #:*dec-number-bin-dir* #:*dec-number-make-dir*
