@@ -257,21 +257,20 @@
       (%double-from-wider double quad context)
       (%single-from-wider single double context))))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun alloc-form (type digits)
-    (case type
-      (number `(cffi-sys:%foreign-alloc
-                (+ (foreign-type-size 'decnumber)
-                   (* (1- (ceiling ,digits +decdpun+))
-                      +decnumber-unit-size+))))
-      (t `(foreign-alloc ',type)))))
+(defmacro let-number ((var type &optional (digits +decdpun+)) &body body)
+  `(let ((,var ,(case type
+                      (number `(cffi-sys:%foreign-alloc
+                                (+ (foreign-type-size 'decnumber)
+                                   (* (1- (ceiling ,digits +decdpun+))
+                                      +decnumber-unit-size+))))
+                      (t `(foreign-alloc ',type)))))
+     ,@body))
 
 (macrolet
     ((def (function (type vars &rest args) &body body)
-         `(defun ,function (,@vars ,@args)
-            (let ((,type
-                   ,(alloc-form type '(foreign-slot-value context 'context 'digits))))
-              ,@body)))
+       `(defun ,function (,@vars ,@args)
+          (let-number (,type ,type (foreign-slot-value context 'context 'digits))
+            ,@body)))
      (def* (inner-type outer-type suffix vars args)
        (let ((function (symbolicate outer-type '- suffix))
              (%function (symbolicate '% inner-type '- suffix))
@@ -281,17 +280,15 @@
              (vars* (mapcar (compose #'gensym #'string) vars)))
          `(defun ,function (,@vars ,@args)
             (declare (inline ,%function))
-            (let ((,inner-type ,(alloc-form inner-type outer-size))
-                  ,@(mapcar #'list vars*
-                            (mapcar (lambda (var)
-                                      `(,outer-to-inner ,var context))
-                                    vars)))
-              (unwind-protect
-                   (,inner-to-outer
-                    (,%function ,inner-type ,@vars* ,@args)
-                    context)
-                (foreign-free ,inner-type)
-                ,@(mapcar (curry #'list 'foreign-free) vars*))))))
+            (let-number (,inner-type ,inner-type ,outer-size)
+              (let ,(mapcar #'list vars*
+                            (mapcar (lambda (var) `(,outer-to-inner ,var context))
+                                    vars))
+                (unwind-protect
+                     (,inner-to-outer (,%function ,inner-type ,@vars* ,@args)
+                                      context)
+                  (foreign-free ,inner-type)
+                  ,@(mapcar (curry #'list 'foreign-free) vars*)))))))
      (defs (types suffixes n-args args)
        (let ((vars (loop for i below n-args
                       collect (symbolicate 'x (princ-to-string i)))))
@@ -427,29 +424,27 @@
                                             `(signed-p)))
                       (declare (inline ,%function))
                       (with-pointer-to-vector-data (bcd array)
-                        (let* ,(if (eq 'number type)
-                                   `((length (array-dimension array 0))
-                                     (,type ,(alloc-form type
-                                                         (if (eq new-suffix 'from-packed)
-                                                             '(* length 2)
-                                                             'length))))
-                                   `((,type ,(alloc-form type 0))))
-                          ,(if (member 'ptr-exp args)
-                               `(with-foreign-object (ptr-exp :int32)
-                                  (setf (mem-ref ptr-exp :int32)
-                                        ,(if scale-p '(- exponent) 'exponent))
-                                  ,(if (eq 'from-bcd new-suffix)
-                                       `(let ((sign (if signed-p +decfloat-neg+ 0)))
-                                          (,%function ,@args sign))
-                                       `(,%function ,@args)))
-                               `(progn
-                                  (setf (foreign-slot-value number 'decnumber 'exponent)
-                                        exponent)
-                                  (prog1
-                                      (,%function ,@args)
-                                    (if signed-p
-                                        (setf (foreign-slot-value number 'decnumber 'bits)
-                                              +flag-neg+))))))))))))
+                        (let ,(if (eq 'number type)
+                                  `((length (array-dimension array 0))))
+                          (let-number (,type ,type (if (eq new-suffix 'from-packed)
+                                                       '(* length 2)
+                                                       'length))
+                            ,(if (member 'ptr-exp args)
+                                 `(with-foreign-object (ptr-exp :int32)
+                                    (setf (mem-ref ptr-exp :int32)
+                                          ,(if scale-p '(- exponent) 'exponent))
+                                    ,(if (eq 'from-bcd new-suffix)
+                                         `(let ((sign (if signed-p +decfloat-neg+ 0)))
+                                            (,%function ,@args sign))
+                                         `(,%function ,@args)))
+                                 `(progn
+                                    (setf (foreign-slot-value number 'decnumber 'exponent)
+                                          exponent)
+                                    (prog1
+                                        (,%function ,@args)
+                                      (if signed-p
+                                          (setf (foreign-slot-value number 'decnumber 'bits)
+                                                +flag-neg+)))))))))))))
   (declare (optimize #+sbcl sb-ext:inhibit-warnings))
   
   (def number set-bcd  from-bcd (number bcd length))
