@@ -70,7 +70,7 @@
                                `(progn
                                   (declaim (inline ,function))
                                   (defun ,function (single ,@args)
-                                    (let ((double (single-to-double single)))
+                                    (let ((double (single-to-double single nil)))
                                       (unwind-protect (,%function double ,@args)
                                         (foreign-free double)))))))))
            (defs (types suffix &body body)
@@ -95,7 +95,7 @@
                                           (,%function double)))))
                                 (declaim (inline ,function))
                                 (defun ,function (single)
-                                  (let ((double (single-to-double single)))
+                                  (let ((double (single-to-double single nil)))
                                     (unwind-protect (progn ,@body)
                                       (foreign-free double))))))))))
 
@@ -176,19 +176,21 @@
              (let* ((decimal-size (symbolicate 'decimal- (princ-to-string size)))
                     (format-to-number (symbolicate format '-to-number))
                     (%size-to-number  (symbolicate '% decimal-size '-to-number))
-                    (format-from-number (symbolicate format '-from-number))
+                    (format-from-number (symbolicate 'number-to- format))
                     (%size-from-number  (symbolicate '% decimal-size '-from-number))
                     (number-format (symbolicate 'decnumber- format)))
                `(progn
                   (declaim
-                   (ftype (function (foreign-pointer) foreign-pointer)
+                   (ftype (function (foreign-pointer foreign-pointer)
+                                    foreign-pointer)
                           ,format-to-number)
                    (ftype (function (foreign-pointer foreign-pointer)
                                     foreign-pointer)
                           ,format-from-number)
                    (inline ,format-to-number ,format-from-number))
-                  (defun ,format-to-number (,format)
-                    (declare (inline ,%size-to-number))
+                  (defun ,format-to-number (,format context)
+                    (declare (inline ,%size-to-number)
+                             (ignore context))
                     (let ((number (foreign-alloc ',number-format)))
                       (,%size-to-number ,format number)))
                   (defun ,format-from-number (number context)
@@ -228,9 +230,10 @@
                (let ((%function-to-wider (symbolicate '% from '-to-wider))
                      (%function-from-wider (symbolicate '% from '-from-wider)))
                  `(progn
-                    (defun ,(symbolicate from '-to- to) (,from)
+                    (defun ,(symbolicate from '-to- to) (,from context)
                       (let ((,to (foreign-alloc ',to)))
-                        (declare (inline ,%function-to-wider))
+                        (declare (inline ,%function-to-wider)
+                                 (ignore context))
                         (,%function-to-wider ,from ,to)))
                     (defun ,(symbolicate to '-to- from) (,to context)
                       (let ((,from (foreign-alloc ',from)))
@@ -239,8 +242,9 @@
   (def single double)
   (def double quad))
 
-(defun single-to-quad (single)
-  (declare (inline %single-to-wider %double-to-wider))
+(defun single-to-quad (single context)
+  (declare (inline %single-to-wider %double-to-wider)
+           (ignore context))
   (let ((quad (foreign-alloc 'quad)))
     (with-uint-pointer (double 8)
       (%single-to-wider single double)
@@ -264,11 +268,30 @@
 
 (macrolet
     ((def (function (type vars &rest args) &body body)
-       `(progn
-          (declaim (inline ,function))
-          (defun ,function (,@vars ,@args)
-            (let ((,type ,(alloc-form type '(foreign-slot-value context 'context 'digits))))
-              ,@body))))
+         `(defun ,function (,@vars ,@args)
+            (let ((,type ,(alloc-form type
+                                      '(foreign-slot-value context 'context 'digits))))
+              ,@body)))
+     (def* (inner-type outer-type suffix vars args)
+       (let ((function (symbolicate outer-type '- suffix))
+             (%function (symbolicate '% inner-type '- suffix))
+             (inner-to-outer (symbolicate inner-type '-to- outer-type))
+             (outer-to-inner (symbolicate outer-type '-to- inner-type))
+             (outer-size (symbolicate '+ outer-type '-pmax+))
+             (vars* (mapcar (compose #'gensym #'string) vars)))
+         `(defun ,function (,@vars ,@args)
+            (declare (inline ,%function))
+            (let ((,inner-type ,(alloc-form inner-type outer-size))
+                  ,@(mapcar #'list vars*
+                            (mapcar (lambda (var)
+                                      `(,outer-to-inner ,var context))
+                                    vars)))
+              (unwind-protect
+                   (,inner-to-outer
+                    (,%function ,inner-type ,@vars* ,@args)
+                    context)
+                (foreign-free ,inner-type)
+                ,@(mapcar (curry #'list 'foreign-free) vars*))))))
      (defs (types suffixes n-args args)
        (let ((vars (loop for i below n-args
                       collect (symbolicate 'x (princ-to-string i)))))
@@ -284,22 +307,24 @@
                            (,%function ,type ,@vars ,@args))))
             ,@(unless (member 'single types)
                       (loop for suffix in suffixes
-                         for function = (symbolicate 'single '- suffix)
-                         for %function = (symbolicate '% 'double '- suffix)
                          collect
-                           `(def ,function (single ,vars ,@args)
-                              (declare (inline ,%function))
-                              (let ((double (foreign-alloc 'double)))
-                                (unwind-protect
-                                     (double-to-single
-                                      (,%function
-                                       double
-                                       ,@(mapcar (lambda (var)
-                                                   `(single-to-double ,var context))
-                                                 vars)
-                                       ,@args)
-                                      context)
-                                  (foreign-free double))))))))))
+                           `(def* double single ,suffix ,vars ,args))))))
+     (defs* (suffixes n-args args)
+       (let ((vars (loop for i below n-args
+                      collect (symbolicate 'x (princ-to-string i)))))
+         `(progn
+            ,@(loop for suffix in suffixes
+                 for function = (symbolicate 'number '- suffix)
+                 for %function = (symbolicate '% 'number '- suffix)
+                 collect
+                   `(def ,function (number ,vars ,@args)
+                      (declare (inline ,%function))
+                      (,%function number ,@vars ,@args)))
+            ,@(loop for type in '(single double quad)
+                 nconcing
+                   (loop for suffix in suffixes
+                      collect
+                        `(def* number ,type ,suffix ,vars ,args)))))))
 
   ;; Convertion from string
   (defs (number single double quad) (from-string) 0 (string context))
@@ -310,12 +335,16 @@
                                   copy-sign)
     1 (context))
 
+  (defs* (log10 ln exp square-root) 1 (context))
+
   ;; Two arguments operations
   (defs (number double quad) (add and divide divide-integer max max-mag multiply
                                   next-toward or quantize remainder remainder-near
                                   rotate scaleb shift subtract xor compare
                                   compare-signal compare-total compare-total-mag)
     2 (context))
+
+  (defs* (power) 2 (context))
 
   ;; Three argument operation
   (defs (number double quad) (fma)

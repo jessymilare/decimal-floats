@@ -118,6 +118,10 @@
            #:single-subtract #:single-xor #:single-compare #:single-compare-signal
            #:single-compare-total #:single-compare-total-mag #:single-fma
            #:single-to-integral-value
+
+           #:single-log10 #:single-ln #:single-exp #:single-square-root #:single-power
+           #:double-log10 #:double-ln #:double-exp #:double-square-root #:double-power
+           #:quad-log10 #:quad-ln #:quad-exp #:quad-square-root #:quad-power
            
            #:load-dec-number-library #:run-dec-make-number
            #:*dec-number-bin-dir* #:*dec-number-make-dir*
@@ -137,8 +141,8 @@
            #:number-class-string #:number-is-canonical #:number-is-finite
            #:number-is-infinite #:number-is-nan #:number-is-signed
            
-           #:single-to-number #:single-from-number #:double-to-number
-           #:double-from-number #:quad-to-number #:quad-from-number
+           #:single-to-number #:number-to-single #:double-to-number
+           #:number-to-double #:quad-to-number #:number-to-quad
            #:single-to-double #:single-to-quad #:double-to-single
            #:double-to-quad #:quad-to-single #:quad-to-double
 
