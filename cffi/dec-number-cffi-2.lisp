@@ -231,9 +231,9 @@
                      (%function-from-wider (symbolicate '% from '-from-wider)))
                  `(progn
                     (defun ,(symbolicate from '-to- to) (,from context)
+                      (declare (ignore context))
                       (let ((,to (foreign-alloc ',to)))
-                        (declare (inline ,%function-to-wider)
-                                 (ignore context))
+                        (declare (inline ,%function-to-wider))
                         (,%function-to-wider ,from ,to)))
                     (defun ,(symbolicate to '-to- from) (,to context)
                       (let ((,from (foreign-alloc ',from)))
@@ -269,8 +269,8 @@
 (macrolet
     ((def (function (type vars &rest args) &body body)
          `(defun ,function (,@vars ,@args)
-            (let ((,type ,(alloc-form type
-                                      '(foreign-slot-value context 'context 'digits))))
+            (let ((,type
+                   ,(alloc-form type '(foreign-slot-value context 'context 'digits))))
               ,@body)))
      (def* (inner-type outer-type suffix vars args)
        (let ((function (symbolicate outer-type '- suffix))
@@ -325,6 +325,7 @@
                    (loop for suffix in suffixes
                       collect
                         `(def* number ,type ,suffix ,vars ,args)))))))
+  (declare (optimize #+sbcl sb-ext:inhibit-warnings))
 
   ;; Convertion from string
   (defs (number single double quad) (from-string) 0 (string context))
