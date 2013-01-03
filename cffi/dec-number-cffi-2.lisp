@@ -203,7 +203,7 @@
   (def quad  128))
 
 (macrolet ((def (function type)
-               (let ((string-size 
+               (let ((string-size
                       (case type
                         (number
                          `(+ 5 +decnumber-exponent-digits+
@@ -410,49 +410,43 @@
   (def quad   to-packed to-packed (quad   exponent bcd)))
 
 (macrolet ((def (type suffix new-suffix args &key scale-p)
-               (let ((function (symbolicate type '- new-suffix))
-                     (%function (symbolicate '% type '- suffix))
-                     (new-args (remove 'length
-                                       (substitute 'exponent 'ptr-exp
-                                                   (substitute 'array 'bcd args)))))
-                 (unless (member 'exponent new-args)
-                   (nconcf new-args '(exponent)))
-                 `(progn
-                    (declaim (inline ,function))
-                    (defun ,function (array exponent
-                                      ,@(if (eq 'from-bcd new-suffix)
-                                            `(signed-p)))
-                      (declare (inline ,%function))
-                      (with-pointer-to-vector-data (bcd array)
-                        (let ,(if (eq 'number type)
-                                  `((length (array-dimension array 0))))
-                          (let-number (,type ,type (if (eq new-suffix 'from-packed)
-                                                       '(* length 2)
-                                                       'length))
-                            ,(if (member 'ptr-exp args)
-                                 `(with-foreign-object (ptr-exp :int32)
-                                    (setf (mem-ref ptr-exp :int32)
-                                          ,(if scale-p '(- exponent) 'exponent))
-                                    ,(if (eq 'from-bcd new-suffix)
-                                         `(let ((sign (if signed-p +decfloat-neg+ 0)))
-                                            (,%function ,@args sign))
-                                         `(,%function ,@args)))
-                                 `(progn
-                                    (setf (foreign-slot-value number 'decnumber 'exponent)
-                                          exponent)
-                                    (prog1
-                                        (,%function ,@args)
-                                      (if signed-p
-                                          (setf (foreign-slot-value number 'decnumber 'bits)
-                                                +flag-neg+)))))))))))))
+             (let ((function (symbolicate type '- new-suffix))
+                   (%function (symbolicate '% type '- suffix)))
+               `(progn
+                  (declaim (inline ,function))
+                  (defun ,function (array exponent
+                                    ,@(if (eq 'from-bcd new-suffix)
+                                          `(signed-p)))
+                    (declare (inline ,%function))
+                    (with-pointer-to-vector-data (bcd array)
+                      (let ,(if (eq 'number type)
+                                `((length (array-dimension array 0))))
+                        (let-number (,type ,type ,(if (eq new-suffix 'from-packed)
+                                                      '(* length 2)
+                                                      'length))
+                          ,(cond
+                            ((eq 'set-bcd suffix)  
+                             `(progn
+                                (setf (foreign-slot-value number 'decnumber 'exponent)
+                                      exponent
+                                      (foreign-slot-value number 'decnumber 'bits)
+                                      (if signed-p +flag-neg+ 0))
+                                (,%function ,@args)))
+                            (scale-p
+                             `(with-foreign-object (ptr-exp :int32)
+                                (setf (mem-ref ptr-exp :int32) (- exponent))
+                                `(,%function ,@(substitute 'ptr-exp 'exponent args))))
+                            (t (if (eq 'from-bcd new-suffix)
+                                   `(,%function ,@args (if signed-p +decfloat-neg+ 0))
+                                   `(,%function ,@args))))))))))))
   (declare (optimize #+sbcl sb-ext:inhibit-warnings))
   
   (def number set-bcd  from-bcd (number bcd length))
-  (def single from-bcd from-bcd (single ptr-exp bcd))
-  (def double from-bcd from-bcd (double ptr-exp bcd))
-  (def quad   from-bcd from-bcd (quad   ptr-exp bcd))
+  (def single from-bcd from-bcd (single exponent bcd))
+  (def double from-bcd from-bcd (double exponent bcd))
+  (def quad   from-bcd from-bcd (quad   exponent bcd))
 
-  (def number from-packed from-packed (bcd length ptr-exp number) :scale-p t)
-  (def single from-packed from-packed (single ptr-exp bcd))
-  (def double from-packed from-packed (double ptr-exp bcd))
-  (def quad   from-packed from-packed (quad   ptr-exp bcd)))
+  (def number from-packed from-packed (bcd length exponent number) :scale-p t)
+  (def single from-packed from-packed (single exponent bcd))
+  (def double from-packed from-packed (double exponent bcd))
+  (def quad   from-packed from-packed (quad   exponent bcd)))

@@ -42,7 +42,7 @@
 (defconstant +decnumber-emin+ -999999999)
 (defconstant +decnumber-exponent-digits+ 9)
 
-(defconstant +decfloat-neg+ #x80000000)
+(defconstant +decfloat-neg+ (- #x80000000))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (locally
@@ -75,11 +75,12 @@
   (bytes :uint8 :count 16))
 
 ;;; Constants for single type
-(defconstant +single-bytes+ 4)
-(defconstant +single-pmax+ 7)
-(defconstant +single-emin+ -95)
-(defconstant +single-emax+ 96)
-(defconstant +single-string-size+ 16)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +single-bytes+ 4)
+  (defconstant +single-pmax+ 7)
+  (defconstant +single-emin+ -95)
+  (defconstant +single-emax+ 96)
+  (defconstant +single-string-size+ 16))
 
 (defcunion single
   (bytes :uint8 :count 4)
@@ -93,11 +94,12 @@
   (lsu decnumber-unit :count #.(ceiling +single-pmax+ +decdpun+)))
 
 ;;; Constants for double type
-(defconstant +double-bytes+ 8)
-(defconstant +double-pmax+ 16)
-(defconstant +double-emin+ -383)
-(defconstant +double-emax+ 384)
-(defconstant +double-string-size+ 25)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +double-bytes+ 8)
+  (defconstant +double-pmax+ 16)
+  (defconstant +double-emin+ -383)
+  (defconstant +double-emax+ 384)
+  (defconstant +double-string-size+ 25))
 
 (defcunion double
   (bytes :uint8 :count 8)
@@ -111,11 +113,12 @@
   (lsu decnumber-unit :count #.(ceiling +double-pmax+ +decdpun+)))
 
 ;;; Constants for quad type
-(defconstant +quad-bytes+ 16)
-(defconstant +quad-pmax+ 34)
-(defconstant +quad-emin+ -6143)
-(defconstant +quad-emax+ 6144)
-(defconstant +quad-string-size+ 43)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +quad-bytes+ 16)
+  (defconstant +quad-pmax+ 34)
+  (defconstant +quad-emin+ -6143)
+  (defconstant +quad-emax+ 6144)
+  (defconstant +quad-string-size+ 43))
 
 (defcunion quad
   (bytes :uint8 :count 16)
