@@ -8,8 +8,9 @@
 (declaim (type fixnum *condition-flags* *condition-trap-enablers*))
 
 (define-constant +all-conditions+
-    '(decimal-invalid-operation decimal-division-by-zero decimal-underflow decimal-subnormal
-      decimal-overflow decimal-inexact decimal-rounded decimal-clamped)
+    '(decimal-conversion-syntax decimal-division-undefined decimal-division-impossible
+      decimal-invalid-operation decimal-division-by-zero decimal-underflow
+      decimal-subnormal decimal-overflow decimal-inexact decimal-rounded decimal-clamped)
   :test #'equal)
 
 (defvar *decimal-local-error*)
@@ -100,77 +101,57 @@ signalled during its execution."
        (let ((*decimal-local-error* #',local-error))
          ,@body))))
 
+(defun get-condition-mask (condition)
+  (ash 1 (position condition +all-conditions+)))
+
 (defmacro decimal-error-cond ((defined-result &key return-p) &body conditions)
   (check-type return-p boolean)
-  (with-gensyms (trap-enablers condition-var local-error return-function condition-name
-                               bit-mask get-condition-name)
+  (with-gensyms (condition-var return-function condition-name
+                               bit-mask get-condition-name trap-mask)
     (let* ((conditions (mapcar #'ensure-list conditions))
-           (bit-numbers (mapcar (compose #'get-condition-bit #'lastcar) conditions)))
+           (masks (mapcar (compose #'get-condition-mask #'lastcar) conditions)))
       (once-only (defined-result)
-        `(flet ((,get-condition-name (,bit-mask)
-                  (let ((,condition-name (first (get-condition-flags ,bit-mask))))
-                    (case  ,condition-name
-                      ,@(loop for condition-spec in conditions
-                           for condition = (lastcar condition-spec)
-                           unless (member condition +all-conditions+) collect
-                             `(,(get-decimal-condition condition) ',condition))
-                      (t ,condition-name)))))
-           (declare (inline ,get-condition-name))
-           (let ((,local-error *decimal-local-error*)
-                 (,trap-enablers *condition-trap-enablers*)
-                 (,bit-mask (logior ,@(loop for condition-spec in conditions
-                                         for tests = (butlast condition-spec)
-                                         for bit-number in bit-numbers
-                                         collect (if tests
-                                                     `(if (and ,@tests)
-                                                          ,(ash 1 bit-number)
-                                                          0)
-                                                     (ash 1 bit-number))))))
-             (setf *condition-flags* (logior *condition-flags* ,bit-mask))
-             (let ((,condition-name (,get-condition-name
-                                     (logand ,trap-enablers ,bit-mask))))
-               (multiple-value-call #'signal-decimal-condition
-                 (funcall ,local-error ,condition-name
-                          ,defined-result)
-                 :return-p ,return-p))
-             (locally ; avoid compiler-warnings of "deleting unreachable code"
-                 #+sbcl (declare (optimize sb-ext:inhibit-warnings))
-                 (or ,defined-result
-                     (let ((,condition-name (,get-condition-name ,bit-mask)))
-                       ,(if return-p
-                            `(multiple-value-bind (,condition-var ,return-function)
-                                 (funcall ,local-error ,condition-name nil)
-                               (funcall ,return-function
-                                        (operation-defined-result ,condition-var)))
-                            `(operation-defined-result
-                              (funcall ,local-error ,condition-name nil))))))))))))
-
-(defgeneric get-condition-bit (condition))
-
-(defgeneric get-decimal-condition (condition))
+        `(let* ((,bit-mask (logior ,@(loop for condition-spec in conditions
+                                        for tests = (butlast condition-spec)
+                                        for mask in masks
+                                        collect (if tests
+                                                    `(if (and ,@tests)
+                                                         ,mask
+                                                         0)
+                                                    mask))))
+                (,trap-mask (logand ,bit-mask *condition-trap-enablers*)))
+           (setf *condition-flags* (logior *condition-flags* ,bit-mask))
+           (if (plusp ,trap-mask)
+               (let ((,condition-name (first (get-condition-flags ,bit-mask))))
+                 (multiple-value-call #'signal-decimal-condition
+                   (funcall *decimal-local-error* ,condition-name ,defined-result)
+                   :return-p ,return-p))
+               (locally ; avoid compiler-warnings of "deleting unreachable code"
+                   #+sbcl (declare (optimize sb-ext:inhibit-warnings))
+                   (or ,defined-result
+                       (let ((,condition-name (first (get-condition-flags ,bit-mask))))
+                         ,(if return-p
+                              `(multiple-value-bind (,condition-var ,return-function)
+                                   (funcall *decimal-local-error* ,condition-name nil)
+                                 (funcall ,return-function
+                                          (operation-defined-result ,condition-var)))
+                              `(operation-defined-result
+                                (funcall *decimal-local-error*
+                                         ,condition-name nil))))))))))))
 
 (macrolet ((def (name (parent) documentation
                       &optional (format-string documentation)
                       &rest format-vars)
-             (let ((bit-number (position name +all-conditions+)))
-               `(progn
-                  (define-condition ,name (,parent)
-                    ()
-                    (:documentation ,documentation)
-                    (:report (lambda (condition stream)
-                               (format stream
-                                       ,(concatenate 'string format-string
-                                                     "~%Operation: ~S; Arguments: ~S")
-                                       ,@format-vars
-                                       (operation-name condition)
-                                       (operation-arguments condition)))))
-                  (defmethod get-condition-bit ((condition (eql ',name)))
-                    ,(or bit-number
-                         `(get-condition-bit ',parent)))
-                  (defmethod get-decimal-condition ((condition (eql ',name)))
-                    ,(if bit-number
-                         'condition
-                         `(get-decimal-condition ',parent)))))))
+             (assert (find name +all-conditions+))
+             `(define-condition ,name (,parent)
+                (:documentation ,documentation)
+                (:report (lambda (condition stream)
+                           (format stream
+                                   ,(concatenate 'string format-string
+                                                 "~%Operation: ~S; Arguments: ~S")
+                                   ,@format-vars
+                                   (operation-name condition)
+                                   (operation-arguments condition)))))))
 
   (def decimal-clamped (decimal-float-condition)
     "The exponent of the result has been constrained or altered due to internal
@@ -180,25 +161,25 @@ representation limits.")
     "Attempt to divide finite number by zero or to calculate a negative power of
 zero.")
 
-  (def decimal-inexact (decimal-float-condition)
-    "The result needed to be rounded due to the current precision and some
-discarded digits were non-zero.")
-
   (def decimal-invalid-operation (decimal-float-condition)
     "Invalid operation.")
 
-  (def decimal-overflow (decimal-float-condition)
-    "The value of the adjusted exponent (as returned by decimal-logb) of the
-result is greater than +maximum-exponent+ and cannot be returned.")
-
   (def decimal-rounded (decimal-float-condition)
     "The result was rounded due to the current precision.")
+
+  (def decimal-inexact (decimal-rounded)
+    "The result needed to be rounded due to the current precision and some
+discarded digits were non-zero.")
+
+  (def decimal-overflow (decimal-inexact)
+    "The value of the adjusted exponent (as returned by decimal-logb) of the
+result is greater than +maximum-exponent+ and cannot be returned.")
 
   (def decimal-subnormal (decimal-float-condition)
     "The result or the operation is subnormal, i.e., it has an adjusted exponent
  (as returned by decimal-logb) less than +minimum-exponent+.")
 
-  (def decimal-underflow (decimal-float-condition)
+  (def decimal-underflow (decimal-subnormal decimal-inexact)
     "The result of the operation is subnormal and inexact, i.e., it has an
 adjusted exponent (as returned by decimal-logb) less than +minimum-exponent+,
 the result needed to be rounded and some discarded digits were non-zero.")
@@ -226,9 +207,11 @@ numbers.")
            (return-another-value (value)
              :report "Return another value."
              :interactive (lambda ()
-                            (list (prompt t "Enter the value to be returned (it will be~
- parsed with PARSE-DECIMAL):~%")))
-             (parse-decimal value :trim-spaces t)))))
+                            (list (parse-decimal-value
+                                   (prompt t "Enter the value to be returned (it will be~
+ parsed with PARSE-DECIMAL):~%")
+                                   :trim-spaces t)))
+             value))))
     (if return-p
         (funcall return-function value)
         value)))

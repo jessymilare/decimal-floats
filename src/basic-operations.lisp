@@ -110,4 +110,5 @@
   (with-inf-nan-handler (x :nan (df-not-a-number-p y)
                            :infinity (and (not (df-not-a-number-p y))
                                           (df-infinity-p y)))
-    (= (df-exponent x) (df-exponent y))))
+    (with-inf-nan-handler (y :any nil)
+      (= (df-exponent x) (df-exponent y)))))
