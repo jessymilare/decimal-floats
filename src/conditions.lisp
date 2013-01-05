@@ -106,8 +106,7 @@ signalled during its execution."
 
 (defmacro decimal-error-cond ((defined-result &key return-p) &body conditions)
   (check-type return-p boolean)
-  (with-gensyms (condition-var return-function condition-name
-                               bit-mask get-condition-name trap-mask)
+  (with-gensyms (condition-var return-function condition-name bit-mask trap-mask)
     (let* ((conditions (mapcar #'ensure-list conditions))
            (masks (mapcar (compose #'get-condition-mask #'lastcar) conditions)))
       (once-only (defined-result)
@@ -139,11 +138,12 @@ signalled during its execution."
                                 (funcall *decimal-local-error*
                                          ,condition-name nil))))))))))))
 
-(macrolet ((def (name (parent) documentation
+(macrolet ((def (name (&rest parents) documentation
                       &optional (format-string documentation)
                       &rest format-vars)
              (assert (find name +all-conditions+))
-             `(define-condition ,name (,parent)
+             `(define-condition ,name ,parents
+                ()
                 (:documentation ,documentation)
                 (:report (lambda (condition stream)
                            (format stream
@@ -207,7 +207,7 @@ numbers.")
            (return-another-value (value)
              :report "Return another value."
              :interactive (lambda ()
-                            (list (parse-decimal-value
+                            (list (parse-decimal
                                    (prompt t "Enter the value to be returned (it will be~
  parsed with PARSE-DECIMAL):~%")
                                    :trim-spaces t)))

@@ -31,7 +31,7 @@ may not be the same). If readability is needed, use one of the following formats
 The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
 *PRINT-READABLY* is true.")
 
-(def-customize-function find-printing-format (exponent adj-exponent digits zerop)
+(def-customize-function find-printing-format (exponent adj-exponent digits zerop type)
   (declare (type adjusted-exponent adj-exponent)
            (type exponent exponent)
            (type fixnum digits)
@@ -105,7 +105,7 @@ funtion GET-PRINTING-FORMAT."
     (%with-inf-nan-handler
         (extra :infinity 
                (progn (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-                            (find-printing-format format 0 1 0 nil))
+                            (find-printing-format format 0 0 0 nil :infinity))
                       (write-string (call-next-handler) stream))
                :+infinity (if (member print-plus-p '(t :coefficient))
                               "+Infinity"
@@ -128,7 +128,7 @@ funtion GET-PRINTING-FORMAT."
                :nan
                (progn
                  (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-                       (find-printing-format format 0 0 0 nil))
+                       (find-printing-format format 0 0 0 nil :nan))
                  (write-string (call-next-handler) stream)
                  (when nan-diagnostic-p
                    (when-let ((slots (df-slots x)))
@@ -140,7 +140,7 @@ funtion GET-PRINTING-FORMAT."
       (multiple-value-bind (digits exponent adj-exponent slots fsld lsfd zerop)
           (parse-info x)
         (setf (values printed-exp dot-position print-plus-p omit-minus-p)
-              (find-printing-format format exponent adj-exponent digits zerop))
+              (find-printing-format format exponent adj-exponent digits zerop nil))
         ;; prints the negative sign, if any
         (cond
           ((%df-negative-p extra)

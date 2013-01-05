@@ -2,7 +2,7 @@
  Copyright (c) 2009-2012 Gustavo Henrique Milaré
  See the file license for license information.
 
- A printing format function should take four arguments:
+ A printing format function should take five arguments:
 
   - EXPONENT, the exponent of the number, i.e., the exponent to be used if all
     digits are printed as an integer. (In particular, if EXPONENT is
@@ -10,13 +10,15 @@
     It will be 0 if number is special (i.e. infinity or NaN)
 
   - ADJUSTED-EXPONENT, the adjusted exponent of the number, i.e., the exponent
-    to be used if only one digit is placed before the dot ('.'). It will be 0 if
-    number is a NaN or 1 if number is infinity.
+    to be used if only one digit is placed before the dot ('.').
 
   - DIGITS, the number of significant digits to be printed (including zeroes to
-    the right). It will be 0 if and only if the number is special.
+    the right). It will be 0 if (and only if) the number is special.
 
   - ZEROP, a boolean that tells whether the number to be printed is a zero.
+
+  - TYPE, one of :infinity (if the number to be rounded is Infinity), :nan (if
+    the number to be rounded is NaN) or NIL (otherwise).
 
  They have the mathematical relation
 
@@ -24,7 +26,7 @@
 
  and all are given to make manipulation easiear.
 
- This function must return these five values, in order:
+ This function must return these four values, in order:
 
   - PRINTED-EXPONENT, the exponent to be printed (after the 'E' character) or
     NIL not to use exponencial notation. This value is ignored if the number to
