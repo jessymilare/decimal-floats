@@ -11,7 +11,7 @@
   (multiple-value-bind (body declarations documentation)
       (parse-body body :documentation t)
     (setf body (cons 'progn body))
-    (loop for (varspec . tail) on (subseq vars 0 (position '&others vars))
+    (loop for (varspec . tail) on (nreverse (subseq vars 0 (position '&others vars)))
        for var = (car varspec)
        and keys = (cdr varspec) do
          (with-gensyms (result)

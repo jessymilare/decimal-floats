@@ -1,6 +1,6 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
+;;; Copyright (c) 2009-2013 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
 (in-package :decimal-floats)
@@ -84,7 +84,7 @@ digits.")
 (deftype exponent ()
   "An integer that can be the value of an exponent."
   `(integer ,(- +minimum-exponent+ (1- +maximum-precision+))
-            ,(- +maximum-exponent+ (1- +maximum-precision+))))
+            ,+maximum-exponent+))
 
 (deftype precision ()
   `(integer ,+minimum-precision+ ,+maximum-precision+))
