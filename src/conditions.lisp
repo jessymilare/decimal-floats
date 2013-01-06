@@ -198,20 +198,25 @@ numbers.")
   )
 
 (defun signal-decimal-condition (condition return-function &key return-p)
-  (let ((value
-         (restart-case (error condition)
-           (return-defined-result ()
-             :report (lambda (stream)
-                       (format stream "Return ~A." (operation-defined-result condition)))
-             (operation-defined-result condition))
-           (return-another-value (value)
-             :report "Return another value."
-             :interactive (lambda ()
-                            (list (parse-decimal
-                                   (prompt t "Enter the value to be returned (it will be~
- parsed with PARSE-DECIMAL):~%")
-                                   :trim-spaces t)))
-             value))))
-    (if return-p
+  (let* ((defined-result (operation-defined-result condition))
+         (value
+          (restart-case (error condition)
+            (return-defined-result ()
+              :report (lambda (stream)
+                        (let ((result defined-result))
+                          (if (eq result 'to-be-calculated)
+                              (format stream "Continue calculation.")
+                              (format stream "Return ~A." result))))
+              (operation-defined-result condition))
+            (return-another-value (value)
+              :report "Return another value."
+              :interactive (lambda ()
+                             (list (read-from-string
+                                    (prompt t "Enter the value to be returned (it will be read):~%")
+                                    :trim-spaces t)))
+              value))))
+    (if (or return-p
+            (and (eq defined-result 'to-be-calculated)
+                 (not (eq value 'to-be-calculated))))
         (funcall return-function value)
         value)))
