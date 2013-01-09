@@ -26,10 +26,10 @@
                                     ("utils" "structure" "conditions" "rounding"))
                              (:file "basic-operations" :depends-on
                                     ("structure" "utils"))
-                             (:file "arithmetic" :depends-on
-                                    ("structure" "utils" "conditions"))
                              (:file "conversions" :depends-on
-                                    ("structure" "utils" "conditions")))))
+                                    ("structure" "utils" "conditions"))
+                             (:file "arithmetic" :depends-on
+                                    ("structure" "utils" "conditions" "conversions")))))
   :depends-on (:alexandria))
 
 (defmethod perform ((op test-op) (system (eql (find-system :decimal-floats))))
