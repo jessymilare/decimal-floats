@@ -40,6 +40,6 @@
 
    ;; Basic Operations
    #:finite-p #:infinite-p #:nan-p #:snan-p #:qnan-p #:subnormal-p #:normal-p
-   #:zero-p #:signed-p #:canonical-p #:canonical #:logb #:decimal-class
-   #:decimal-class-string  #:copy-decimal #:copy-abs #:copy-sign #:copy-negate
+   #:zero-p #:signed-p #:canonical-p #:canonical #:logb-int #:logb #:decimal-class
+   #:decimal-class-string #:copy-decimal #:copy-abs #:copy-sign #:copy-negate
    #:same-quantum-p))
