@@ -52,7 +52,19 @@ Information on how to create a rounding mode function is in the file
       (decf (aref slots 0) (rem (aref slots 0) (aref +expt-10+ fsld)))
       (setf (df-negative-p x) signed-p
             (df-first-slot-last-digit x) fsld
-            (df-last-slot-first-digit x) (1- +decimal-slot-digits+))
+            (df-last-slot-first-digit x) (1- +decimal-slot-digits+)
+            (df-subnormal-p x) t)
+      x)))
+
+(declaim (inline make-smallest-zero))
+(defun make-smallest-zero (signed-p)
+  (multiple-value-bind (n-slots fsld) (ceiling *precision* +decimal-slot-digits+)
+    (let* ((fsld (- fsld))
+           (slots (make-digits-array n-slots :initial-element 0))
+           (x (%make-df slots +internal-e-min+)))
+      (setf (df-negative-p x) signed-p
+            (df-first-slot-last-digit x) fsld
+            (df-last-slot-first-digit x) 0)
       x)))
 
 (defun %next-up (iexponent slots fsld lsfd)
@@ -154,7 +166,12 @@ Information on how to create a rounding mode function is in the file
                    (values (1- start) +maximum-decimal-slot+)
                    (values start (aref +expt-10+ fsld)))
              (let* ((half-pow-10 (truncate pow-10 2))
-                    (discarded-slot (rem (aref slots last-discarded) pow-10))
+                    (length (length slots))
+                    (discarded-slot (if (< last-discarded length)
+                                        (rem (aref slots last-discarded) pow-10)
+                                        (progn
+                                          (setf last-discarded length)
+                                          0)))
                     (discarded-digits
                      ;; Value that will be used by rounding-mode
                      ;; (see doc/rounding-mode)
@@ -171,7 +188,8 @@ Information on how to create a rounding mode function is in the file
                             7
                             5)))))
                ;; Setting invalid digits to zero
-               (decf (aref slots last-discarded) discarded-slot)
+               (unless (zerop discarded-slot)
+                 (decf (aref slots last-discarded) discarded-slot))
                (values (resize-slots slots start end) fsld lsfd
                        discarded-digits t))))))
       (t (values (resize-slots slots 0 end) fsld lsfd 0 nil)))))

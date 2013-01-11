@@ -251,7 +251,7 @@ digits.")
         (values (make-digits-array (1+ slots-1)) (- fsld) lsfd iexponent)))))
 
 (defun parse-info (x)
-  ;; Abstracting away differences between normal and subnormal numbers information
+  ;; Abstracting away differences between informations of normal and subnormal numbers
   (let* ((extra (df-extra x))
          (slots (df-slots x))
          (length (length slots))
@@ -266,7 +266,9 @@ digits.")
                (last-position (or (position-if #'plusp slots :from-end t)
                                   (progn (setf zerop t) 0)))
                (discarded-slots (- length (1+ last-position)))
-               (new-lsfd (first-digit-of-slot (aref slots last-position)))
+               (new-lsfd (if zerop
+                             fsld
+                             (first-digit-of-slot (aref slots last-position))))
                (discarded-digits (- (* discarded-slots +decimal-slot-digits+)
                                     new-lsfd)))
           ;; In a subnormal number, lsfd is necessarily 0

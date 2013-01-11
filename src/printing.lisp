@@ -32,8 +32,7 @@ The method of PRINT-OBJECT for DECIMAL-FLOAT may ignore this value if
 *PRINT-READABLY* is true.")
 
 (def-customize-function find-printing-format (exponent adj-exponent digits zerop type)
-  (declare (type adjusted-exponent adj-exponent)
-           (type exponent exponent)
+  (declare (type exponent exponent adj-exponent)
            (type fixnum digits)
            (type boolean zerop))
   (:scientific (if (and (<= exponent 0)
