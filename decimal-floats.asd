@@ -28,7 +28,7 @@
                                     ("structure" "utils"))
                              (:file "conversions" :depends-on
                                     ("structure" "utils" "conditions" "rounding"))
-                             (:file "arithmetic" :depends-on
+                             (:file "operations" :depends-on
                                     ("structure" "utils" "conditions" "conversions"
                                                  "rounding")))))
   :depends-on (:alexandria))
