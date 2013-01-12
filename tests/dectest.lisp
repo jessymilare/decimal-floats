@@ -143,17 +143,6 @@
       (tg:finalize function (curry #'close stream)))
     function))
 
-(defun get-operation (operation)
-  (case operation
-    ((tosci toeng apply) #'identity)
-    (samequantum #'same-quantum-p)
-    (copy #'copy-decimal)
-    (copyabs #'copy-abs)
-    (copynegate #'copy-negate)
-    (copysign #'copy-sign)
-    (class #'decimal-class-string)
-    (t (symbol-function operation))))
-
 (defvar *testcase-precision* *precision*)
 (defvar *testcase-rounding-mode* *rounding-mode*)
 (defvar *testcase-maxexponent* +maximum-exponent+)
@@ -165,6 +154,33 @@
 (defvar *testcase-extended* 1)
 (defvar *testcase-clamp* 0)
 (defvar *testcase-output-directory* nil)
+
+(defun get-operation (operation)
+  (case operation
+    ((tosci toeng apply) #'identity)
+    (samequantum #'same-quantum-p)
+    (copy #'copy-decimal)
+    (copyabs #'copy-abs)
+    (copynegate #'copy-negate)
+    (copysign #'copy-sign)
+    (class #'decimal-class-string)
+    (scaleb (lambda (x scale)
+              (let ((scale-int (with-condition-flags (nil)
+                                 (decimal-to-integer scale))))
+                ;; If the given SCALE is supposed to signal an error
+                ;; for being out of the limit +/- 2*(Emax+precision)...
+                (when (and (integerp scale-int)
+                           (> (abs scale-int)
+                              (* 2 (+ *testcase-maxexponent* *precision*))))
+                  ;; ... then we change the SCALE to ensure it does signal this error.
+                  ;; FIXME: change this if and when we support changing
+                  ;; the current maximum and minimum exponents
+                  (setf scale (integer-to-decimal
+                               (if (minusp scale-int)
+                                   (- -1 (* 2 (+ +maximum-exponent+ *precision*)))
+                                   (+ +1 (* 2 (+ +maximum-exponent+ *precision*))))))))
+              (scaleb x scale)))
+    (t (symbol-function operation))))
 
 (define-parser *testcase-file-parser*
   (:start-symbol all-forms)
@@ -301,25 +317,34 @@ version being used: ~S, ignored version: ~S."
                               ;; supported by this implementation, so,
                               ;; for now, there is no way to simulate
                               ;; overflow or underflow tests.
-                              (with-directive-tests
-                                  (`(test-comparison ',test-id ',operation
-                                                     ',operands ',result ',conditions))
-                                ((and (/= +maximum-exponent+ *testcase-maxexponent*)
-                                      (intersection '(decimal-overflow decimal-clamped)
-                                                    conditions))
-                                 maxexponent)
-                                ((and (/= +minimum-exponent+ *testcase-minexponent*)
-                                      (intersection '(decimal-subnormal decimal-underflow
-                                                      decimal-clamped)
-                                                    conditions))
-                                 minexponent))))
+                              (let ((test-form `(test-comparison
+                                                 ',test-id ',operation
+                                                 ',operands ',result ',conditions)))
+                                (if (find "#" operands :test #'equal)
+                                    `(skip ,test-form nil)
+                                    (with-directive-tests (test-form)
+                                      ((and (/= +maximum-exponent+ *testcase-maxexponent*)
+                                            (intersection '(decimal-overflow
+                                                            decimal-clamped)
+                                                          conditions))
+                                       maxexponent)
+                                      ((and (/= +minimum-exponent+ *testcase-minexponent*)
+                                            (intersection '(decimal-subnormal
+                                                            decimal-underflow
+                                                            decimal-clamped)
+                                                          conditions))
+                                       minexponent))))))
                      (cons first-test other-tests))))
            (ctest-form
             (when inner-forms
               `(addtest (,*testcase-testsuite*)
                  ,ctest-name
                  (let ((*precision* ,*testcase-precision*)
-                       (*rounding-mode* ,*testcase-rounding-mode*))
+                       (*rounding-mode* ,*testcase-rounding-mode*)
+                       ;; FIXME: We need these in order to fake SCALEB tests
+                       ;; since we can't change maximum and minimum exponents.
+                       (*testcase-maxexponent* ,*testcase-maxexponent*)
+                       (*testcase-minexponent* ,*testcase-minexponent*))
                    ,@inner-forms)))))
       (with-directive-tests (ctest-form)
         ((/= 1 *testcase-extended*) extended)

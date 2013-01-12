@@ -38,8 +38,13 @@
    #:*printing-format*
    #:print-decimal #:decimal-to-string #:parse-decimal
 
+   ;; Conversions
+   #:decimal-to-integer #:integer-to-decimal
+   #:decimal-to-float   #:float-to-decimal
+
    ;; Basic Operations
    #:finite-p #:infinite-p #:nan-p #:snan-p #:qnan-p #:subnormal-p #:normal-p
-   #:zero-p #:signed-p #:canonical-p #:canonical #:logb-int #:logb #:decimal-class
-   #:decimal-class-string #:copy-decimal #:copy-abs #:copy-sign #:copy-negate
-   #:same-quantum-p))
+   #:zero-p #:signed-p #:same-quantum-p #:canonical-p #:canonical
+   #:logb-int #:logb #:scaleb
+   #:decimal-class #:decimal-class-string
+   #:copy-decimal #:copy-abs #:copy-sign #:copy-negate))

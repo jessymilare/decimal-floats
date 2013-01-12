@@ -8,48 +8,83 @@
 (defmacro defop (name (&rest vars) (&optional (condition (gensym "CONDITION"))
                                               &rest condition-case)
                  &body body)
-  (multiple-value-bind (body declarations documentation)
-      (parse-body body :documentation t)
-    (setf body (cons 'progn body))
-    (loop for (varspec . tail) on (nreverse (subseq vars 0 (position '&others vars)))
-       for var = (car varspec)
-       and keys = (cdr varspec) do
-         (with-gensyms (result)
+  (with-gensyms (result get-result)
+    (multiple-value-bind (body declarations documentation)
+        (parse-body body :documentation t)
+      (setf body (cons 'progn body))
+      (loop with dec-vars = (mapcar #'ensure-list
+                                    (subseq vars 0 (position '&others vars)))
+         for n from 1 to (length dec-vars)
+         for (varspec . tail) = (last dec-vars n)
+         for var = (car varspec)
+         and keys = (cdr varspec)
+         do
            (unless (getf keys :qnan)
              (setf (getf keys :qnan) var))
            (setf body
                  `(with-inf-nan-handler
-                      (,var :nan (let ((,result ,var))
-                                   ;; Spec says to copy information
-                                   ;; from the first sNaN, if any, or
-                                   ;; of the first qNaN.
-                                   (if (or (df-infinity-p ,var)
-                                           ,@(mapcar (lambda (varspec)
-                                                       (let ((var (car varspec)))
-                                                         `(and (df-not-a-number-p ,var)
-                                                               (df-infinity-p ,var)
-                                                               (progn (setf ,result ,var)
-                                                                      t))))
-                                                     tail))
-                                       (decimal-error-cond
-                                           ((cond
-                                              ((df-slots ,result)
-                                               (let ((,result (copy-decimal ,result)))
-                                                 (setf (df-infinity-p ,result) nil)
-                                                 ,result))
-                                              ((df-negative-p ,result) +-qnan+)
-                                              (t ++qnan+)))
-                                         (decimal-invalid-operation))
-                                       (call-next-handler)))
-                            ,@keys)
-                    ,body))))
-    (deletef vars '&others)
-    `(defun ,name ,(mapcar #'ensure-car vars)
-       ,@(ensure-list documentation)
-       ,@declarations
-       (with-operation (,name ,condition ,@(mapcar #'ensure-car vars))
-           (,@condition-case)
-         ,body))))
+                      (,var
+                       :nan (let ((,result ,var))
+                              ;; Spec says to copy information
+                              ;; from the first sNaN, if any, or
+                              ;; of the first qNaN.
+                              (if (or (df-infinity-p ,var)
+                                      ,@(mapcar (lambda (varspec)
+                                                  (let ((var (car varspec)))
+                                                    `(and (df-not-a-number-p ,var)
+                                                          (df-infinity-p ,var)
+                                                          (progn (setf ,result ,var)
+                                                                 t))))
+                                                tail))
+                                  (,get-result ,result)
+                                  ,(or (getf keys :nan)
+                                       '(call-next-handler))))
+                       :infinity
+                       (let ((,result ,var))
+                         (if (or ,@(maplist
+                                    (lambda (varspecs)
+                                      (let* ((var (caar varspecs)))
+                                        `(and (df-not-a-number-p ,var)
+                                              (progn
+                                                (setf ,result ,var)
+                                                ,@(mapcar
+                                                   (lambda (varspec)
+                                                     (let ((var (car varspec)))
+                                                       `(and (df-not-a-number-p ,var)
+                                                             (df-infinity-p ,var)
+                                                             (progn
+                                                               (setf ,result ,var)
+                                                               t))))
+                                                   (cdr varspecs))
+                                                t))))
+                                    tail))
+                             (if (df-infinity-p ,result)
+                                 (,get-result ,result)
+                                 ,result)
+                             ,(or (getf keys :infinity)
+                                  '(call-next-handler))))
+                       ,@(progn
+                          (remf keys :infinity)
+                          (remf keys :nan)
+                          keys))
+                    ,body)))
+      (deletef vars '&others)
+      `(defun ,name ,(mapcar #'ensure-car vars)
+         ,@(ensure-list documentation)
+         ,@declarations
+         (with-operation (,name ,condition ,@(mapcar #'ensure-car vars))
+             (,@condition-case)
+           (flet ((,get-result (,result)
+                    (decimal-error-cond
+                        ((cond
+                           ((df-slots ,result)
+                            (let ((,result (copy-decimal ,result)))
+                              (setf (df-infinity-p ,result) nil)
+                              ,result))
+                           ((df-negative-p ,result) +-qnan+)
+                           (t ++qnan+)))
+                      (decimal-invalid-operation))))
+             ,body))))))
 
 (defop logb-int ((x :infinity ++infinity+))
     ()
@@ -60,14 +95,12 @@
 
 (defun logb (x)
   (declare (inline integer-to-decimal))
-  (integer-to-decimal (logb-int x) :round-p t))
+  (let ((result (logb-int x)))
+    (if (integerp result)
+        (integer-to-decimal result :round-p t)
+        result)))
 
-(defun %scaleb (x scale)
-  (if (decimal-float-p scale)
-      (setf scale (decimal-to-integer scale)))
-  (unless (<= (abs scale) (* 2 (+ +maximum-exponent+ *precision*)))
-    (decimal-error-cond (++qnan+)
-      decimal-invalid-operation))
+(defun %scaleb-int (x scale)
   (let* ((slots (df-slots x))
          (length (length slots))
          (iexponent (df-iexponent x))
@@ -106,6 +139,25 @@
                        (setf (aref new-slots (1- new-length)) prev-high)))
           (normalize-number iexponent new-slots new-fsld (%df-negative-p extra)))))))
 
-(defop scaleb ((x :infinity x) &others scale)
+(defop scaleb-int ((x :infinity x) &others scale)
     ()
-  (%scaleb x scale))
+  (declare (type integer scale))
+  (unless (<= (abs scale) (* 2 (+ +maximum-exponent+ *precision*)))
+    (decimal-error-cond (++qnan+ :return-p t)
+      decimal-invalid-operation))
+  (%scaleb-int x scale))
+
+(defop scaleb ((x :infinity
+                  (if (zerop (df-exponent scale))
+                      x
+                      ;; SCALE is not an integer! Abort.
+                      (decimal-error-cond (++qnan+)
+                        decimal-invalid-operation)))
+               (scale :infinity (decimal-error-cond (++qnan+)
+                                  decimal-invalid-operation)))
+    ()
+  (let ((scale (%decimal-to-integer scale)))
+    (unless (<= (abs scale) (* 2 (+ +maximum-exponent+ *precision*)))
+      (decimal-error-cond (++qnan+ :return-p t)
+        decimal-invalid-operation))
+    (%scaleb-int x scale)))

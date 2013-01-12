@@ -205,7 +205,7 @@ funtion GET-PRINTING-FORMAT."
                                       string :start start :end end :from-end t))
         (setf end (1+ new-end))))
     (unless (< -1 start end)
-      (decimal-error-cond (nil :return-p t)
+      (decimal-error-cond (++qnan+ :return-p t)
         decimal-conversion-syntax))
     (let* ((position start)
            (signed-p (case (char string start)
@@ -235,7 +235,7 @@ funtion GET-PRINTING-FORMAT."
                            (when (or (and round-p (> (- end position) *precision*))
                                      (find-if (complement #'digit-char-p) string
                                               :start position :end end))
-                             (decimal-error-cond (nil :return-p t)
+                             (decimal-error-cond (++qnan+ :return-p t)
                                decimal-conversion-syntax))
                            (multiple-value-bind (iexponent slots fsld lsfd)
                                (%parse-decimal string position end)
@@ -248,7 +248,7 @@ funtion GET-PRINTING-FORMAT."
                        (string-equal "infinity" string :start2 position :end2 end))
                    (if signed-p +-infinity+ ++infinity+))
                   (t
-                   (decimal-error-cond (nil :return-p t)
+                   (decimal-error-cond (++qnan+ :return-p t)
                      decimal-conversion-syntax))))
           (multiple-value-bind (iexponent slots fsld lsfd)
               (%parse-decimal string position end)
@@ -277,18 +277,18 @@ funtion GET-PRINTING-FORMAT."
                                       (digit-char-p (char string (1- end))))
                            ;; PARSE-INTEGER accepts leading and trailing whitespaces
                            ;; while %PARSE-DECIMAL doesn't
-                           (decimal-error-cond (nil :return-p t)
+                           (decimal-error-cond (++qnan+ :return-p t)
                              decimal-conversion-syntax))
                          (handler-case (parse-integer string :start (1+ e-position)
                                                       :end end)
                            (parse-error ()
-                             (decimal-error-cond (nil :return-p t)
+                             (decimal-error-cond (++qnan+ :return-p t)
                                decimal-conversion-syntax))))
                         ;; There is an "E" but no exponent after it
-                        (t (decimal-error-cond (nil :return-p t)
+                        (t (decimal-error-cond (++qnan+ :return-p t)
                              decimal-conversion-syntax)))))
     (unless (plusp digits)
-      (decimal-error-cond (nil :return-p t)
+      (decimal-error-cond (++qnan+ :return-p t)
         decimal-conversion-syntax))
     (multiple-value-bind (slots fsld lsfd iexponent)
         (calculate-info digits printed-exp (- dot-position start))
@@ -300,7 +300,7 @@ funtion GET-PRINTING-FORMAT."
                              (incf position))
                          (prog1
                              (or (digit-char-p (char string position))
-                                 (decimal-error-cond (nil :return-p t)
+                                 (decimal-error-cond (++qnan+ :return-p t)
                                    decimal-conversion-syntax))
                            (incf position)))
                      slots fsld lsfd t)))

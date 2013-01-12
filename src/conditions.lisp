@@ -17,6 +17,8 @@
 
 (define-condition decimal-float-condition ()
   ((defined-result :accessor operation-defined-result :initarg :defined-result)
+   (correctable-p :accessor operation-correctable-p :initarg :correctable-p
+                  :initform nil)
    (arguments :accessor operation-arguments :initarg :arguments)
    (operation :accessor operation-name :initarg :operation)))
 
@@ -104,7 +106,7 @@ signalled during its execution."
 (defun get-condition-mask (condition)
   (ash 1 (position condition +all-conditions+)))
 
-(defmacro decimal-error-cond ((defined-result &key return-p) &body conditions)
+(defmacro decimal-error-cond ((defined-result &key return-p correctable-p) &body conditions)
   (check-type return-p boolean)
   (with-gensyms (condition-var return-function condition-name bit-mask trap-mask)
     (let* ((conditions (mapcar #'ensure-list conditions))
@@ -124,16 +126,17 @@ signalled during its execution."
                (let ((,condition-name (first (get-condition-flags ,bit-mask))))
                  (multiple-value-call #'signal-decimal-condition
                    (funcall *decimal-local-error* ,condition-name ,defined-result)
-                   :return-p ,return-p))
+                   :return-p ,return-p :correctable-p ,correctable-p))
                (locally ; avoid compiler-warnings of "deleting unreachable code"
                    #+sbcl (declare (optimize sb-ext:inhibit-warnings))
-                   (or ,defined-result
+                   (or ,(unless return-p defined-result)
                        (let ((,condition-name (first (get-condition-flags ,bit-mask))))
                          ,(if return-p
                               `(multiple-value-bind (,condition-var ,return-function)
                                    (funcall *decimal-local-error* ,condition-name nil)
                                  (funcall ,return-function
-                                          (operation-defined-result ,condition-var)))
+                                          (or ,defined-result
+                                              (operation-defined-result ,condition-var))))
                               `(operation-defined-result
                                 (funcall *decimal-local-error*
                                          ,condition-name nil))))))))))))
@@ -197,26 +200,26 @@ numbers.")
   ;; insufficient-storage, invalid-context
   )
 
-(defun signal-decimal-condition (condition return-function &key return-p)
+(defun signal-decimal-condition (condition return-function &key return-p correctable-p)
   (let* ((defined-result (operation-defined-result condition))
          (value
           (restart-case (error condition)
             (return-defined-result ()
               :report (lambda (stream)
-                        (let ((result defined-result))
-                          (if (eq result 'to-be-calculated)
-                              (format stream "Continue calculation.")
-                              (format stream "Return ~A." result))))
-              (operation-defined-result condition))
+                        (format stream "Return ~A." defined-result))
+              defined-result)
+            (continue-computation ()
+              :report "Continue computation."
+              :test (lambda (c) (declare (ignore c)) correctable-p)
+              'to-be-computed)
             (return-another-value (value)
               :report "Return another value."
-              :interactive (lambda ()
-                             (list (read-from-string
-                                    (prompt t "Enter the value to be returned (it will be read):~%")
-                                    :trim-spaces t)))
+              :interactive
+              (lambda ()
+                (list (read-from-string
+                       (prompt t "Enter the value to be returned (it will be READ):~%")
+                       :trim-spaces t)))
               value))))
-    (if (or return-p
-            (and (eq defined-result 'to-be-calculated)
-                 (not (eq value 'to-be-calculated))))
+    (if (and return-p (not (eq value 'to-be-computed)))
         (funcall return-function value)
         value)))
