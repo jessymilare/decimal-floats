@@ -47,4 +47,6 @@
    #:zero-p #:signed-p #:same-quantum-p #:canonical-p #:canonical
    #:logb-int #:logb #:scaleb
    #:decimal-class #:decimal-class-string
-   #:copy-decimal #:copy-abs #:copy-sign #:copy-negate))
+   #:copy-decimal #:dec-abs #:copy-abs #:copy-sign #:copy-minus
+   #:plus #:minus
+   #:maximum #:maximum-abs #:minimum #:minimum-abs))

@@ -231,7 +231,7 @@ funtion GET-PRINTING-FORMAT."
                        (let ((position (position #\0 string :start position :end end
                                                  :test-not #'char=)))
                          (when position
-                           ;; Rounding NaN diagnostic message is not allowed.
+                           ;; Rounding NaN diagnostic message here is not allowed.
                            (when (or (and round-p (> (- end position) *precision*))
                                      (find-if (complement #'digit-char-p) string
                                               :start position :end end))

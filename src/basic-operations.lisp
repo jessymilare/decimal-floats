@@ -99,8 +99,8 @@
         (setf (df-negative-p z) (df-negative-p y))
         z)))
 
-(declaim (inline copy-negate))
-(defun copy-negate (x)
+(declaim (inline copy-minus))
+(defun copy-minus (x)
   (let ((y (copy-decimal x)))
     (setf (df-negative-p y) (not (df-negative-p x)))
     y))

@@ -8,8 +8,9 @@
 (defparameter *tests-directory*
   (asdf:system-relative-pathname :decimal-floats "tests/"))
 
-(defparameter *files-to-test* '("base" "logb" "copy" "copyabs" "copynegate"
-                                "copysign" "class" "samequantum" "scaleb"))
+(defparameter *files-to-test* '("abs" "base" "logb" "copy" "copyabs" "copynegate"
+                                "copysign" "class" "max" "maxmag" "min" "minmag"
+                                "minus" "plus" "samequantum" "scaleb"))
 
 (defun download-file (url output)
   ;; Patches welcome ;)

@@ -112,11 +112,13 @@
           #+ecl progn
     (/ (float 0.0 float) (float 0.0 float))))
 
-(defun decimal-to-float (x &optional (other (let ((precision *precision*))
-                                              (cond
-                                                ((<= precision 24) 1f0)
-                                                ((<= precision 53) 1d0)
-                                                (t 1l0)))))
+(defun decimal-to-float (x &optional
+                         (other (let ((precision *precision*))
+                                  #+sbcl (declare (optimize sb-ext:inhibit-warnings))
+                                  (cond
+                                    ((<= precision 24) 1f0)
+                                    ((<= precision 53) 1d0)
+                                    (t 1l0)))))
   (with-operation (decimal-to-float x other)
       ()
     (with-inf-nan-handler
