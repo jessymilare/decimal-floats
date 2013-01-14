@@ -49,4 +49,8 @@
    #:decimal-class #:decimal-class-string
    #:copy-decimal #:dec-abs #:copy-abs #:copy-sign #:copy-minus
    #:plus #:minus
-   #:maximum #:maximum-abs #:minimum #:minimum-abs))
+
+   ;; Comparison
+   #:maximum #:maximum-abs #:minimum #:minimum-abs
+   #:compare #:compare-int #:compare-total #:compare-total-int
+   #:compare-total-abs #:compare-total-abs-int))

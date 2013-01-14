@@ -16,7 +16,8 @@
                (round-number 1 0 slots 0 (minusp integer))
                (make-decimal-float 0 slots
                                    :negative-p (minusp integer)
-                                   :last-slot-first-digit (first-digit-of-slot integer)))))
+                                   :last-slot-first-digit
+                                   (first-digit-of-slot abs-integer)))))
         ((< abs-integer (expt +maximum-decimal-slot+ 2))
          (multiple-value-bind (s1 s0) (truncate abs-integer +maximum-decimal-slot+)
            (let ((slots (make-digits-array 2)))

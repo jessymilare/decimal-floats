@@ -25,69 +25,68 @@
 
 (defmacro defop (name (&rest vars) (&key (return-first-qnan t) &allow-other-keys)
                  &body body)
-  (with-gensyms (condition)
-    (multiple-value-bind (body declarations documentation)
-        (parse-body body :documentation t)
-      (setf body (cons 'progn body))
-      (loop with dec-vars = (mapcar #'ensure-list
-                                    (subseq vars 0 (position '&others vars)))
-         for n from 1 to (length dec-vars)
-         for (varspec . tail) = (last dec-vars n)
-         for var = (car varspec)
-         and keys = (cdr varspec)
-         do
-           (unless (getf keys :qnan)
-             (setf (getf keys :qnan) var))
-           (setf body
-                 `(with-inf-nan-handler
-                      (,var
-                       :nan
-                       ;; Spec says to copy information
-                       ;; from the first sNaN, if any, or
-                       ;; of the first qNaN.
-                       (or (and (df-infinity-p ,var)
-                                (handle-snan ,var))
-                           ,@(mapcar (lambda (varspec)
-                                       (let ((var (car varspec)))
-                                         `(and (df-not-a-number-p ,var)
-                                               (df-infinity-p ,var)
-                                               (handle-snan ,var))))
-                                     tail)
-                           ,(or (getf keys :nan) '(call-next-handler)))
-                       :infinity
-                       ;; We have to test if there is any NaN
-                       ;; before calling the handler of this infinity.
-                       (or ,@(maplist
-                              (lambda (varspecs)
-                                (let* ((var (caar varspecs)))
-                                  `(and (df-not-a-number-p ,var)
-                                        ;; Found a NaN; is there an sNaN?
-                                        (or
-                                         (and (df-infinity-p ,var)
-                                              (handle-snan ,var))
-                                         ,@(mapcar
-                                            (lambda (varspec)
-                                              (let ((var (car varspec)))
-                                                `(and (df-not-a-number-p ,var)
-                                                      (df-infinity-p ,var)
-                                                      (handle-snan ,var))))
-                                            (cdr varspecs))
-                                         ;; There is no sNaN, only this NaN.
-                                         ,(if return-first-qnan var)))))
-                              tail)
-                           ,(or (getf keys :infinity)
-                                '(call-next-handler)))
-                       ,@(progn
-                          (remf keys :infinity)
-                          (remf keys :nan)
-                          keys))
-                    ,body)))
-      (deletef vars '&others)
-      `(defun ,name ,(mapcar #'ensure-car vars)
-         ,@(ensure-list documentation)
-         ,@declarations
-         (with-operation (,name ,@(mapcar #'ensure-car vars))
-           ,body)))))
+  (multiple-value-bind (body declarations documentation)
+      (parse-body body :documentation t)
+    (setf body (cons 'progn body))
+    (loop with dec-vars = (mapcar #'ensure-list
+                                  (subseq vars 0 (position '&others vars)))
+       for n from 1 to (length dec-vars)
+       for (varspec . tail) = (last dec-vars n)
+       for var = (car varspec)
+       and keys = (cdr varspec)
+       do
+       (unless (getf keys :qnan)
+         (setf (getf keys :qnan) var))
+       (setf body
+             `(with-inf-nan-handler
+                  (,var
+                   :nan
+                   ;; Spec says to copy information
+                   ;; from the first sNaN, if any, or
+                   ;; of the first qNaN.
+                   (or (and (df-infinity-p ,var)
+                            (handle-snan ,var))
+                       ,@(mapcar (lambda (varspec)
+                                   (let ((var (car varspec)))
+                                     `(and (df-not-a-number-p ,var)
+                                           (df-infinity-p ,var)
+                                           (handle-snan ,var))))
+                                 tail)
+                       ,(or (getf keys :nan) '(call-next-handler)))
+                   :infinity
+                   ;; We have to test if there is any NaN
+                   ;; before calling the handler of this infinity.
+                   (or ,@(maplist
+                          (lambda (varspecs)
+                            (let* ((var (caar varspecs)))
+                              `(and (df-not-a-number-p ,var)
+                                    ;; Found a NaN; is there an sNaN?
+                                    (or
+                                     (and (df-infinity-p ,var)
+                                          (handle-snan ,var))
+                                     ,@(mapcar
+                                        (lambda (varspec)
+                                          (let ((var (car varspec)))
+                                            `(and (df-not-a-number-p ,var)
+                                                  (df-infinity-p ,var)
+                                                  (handle-snan ,var))))
+                                        (cdr varspecs))
+                                     ;; There is no sNaN, only this NaN.
+                                     ,(if return-first-qnan var)))))
+                          tail)
+                       ,(or (getf keys :infinity)
+                            '(call-next-handler)))
+                   ,@(progn
+                      (remf keys :infinity)
+                      (remf keys :nan)
+                      keys))
+                ,body)))
+    (deletef vars '&others)
+    `(defun ,name ,(mapcar #'ensure-car vars)
+       ,@(ensure-list documentation)
+       ,@declarations
+       (with-operation (,name ,@(mapcar #'ensure-car vars))
+         ,body))))
 
 (declaim (inline logb-int))
 (defop logb-int ((x :infinity ++infinity+))
@@ -169,7 +168,7 @@
         decimal-invalid-operation))
     (%scaleb-int x scale)))
 
-(defun %compare-total-mag (x y)
+(defun %compare-total-abs (x y)
   ;; Returns:
   ;; -2 if X is numerically smaller than Y,
   ;; -1 if X and Y are numerically equal but X is lower than Y in total ordering,
@@ -243,6 +242,107 @@
                   ((> x-fsld y-fsld) +1)
                   (t 0))))))))))
 
+(defun %compare-nans (x y)
+  (let ((x-slots (df-slots x))
+        (y-slots (df-slots y)))
+    (if x-slots
+        (if y-slots
+            (let ((x-length (length x-slots))
+                  (y-length (length y-slots)))
+              (cond
+                ((> x-length y-length) +1)
+                ((> x-length y-length) -1)
+                (t (loop
+                      for i from (1- x-length) downto 0
+                      for x-slot = (aref x-slots i)
+                      and y-slot = (aref y-slots i)
+                      do
+                      (cond
+                        ((> x-slot y-slot) (return +1))
+                        ((< x-slot y-slot) (return -1)))
+                      finally (return 0)))))
+            (if (and (zerop (aref x-slots 0))
+                     (= 1 (length x-slots)))
+                0
+                +1))
+        (if y-slots
+            (if (and (zerop (aref y-slots 0))
+                     (= 1 (length y-slots)))
+                0
+                -1)
+            0))))
+
+(defun compare-total-abs-int (x y)
+  (with-inf-nan-handler
+      (x :qnan
+         (with-inf-nan-handler
+             (y :qnan (%compare-nans x y)
+                :snan +1
+                :infinity +1)
+           +1)
+         :snan
+         (with-inf-nan-handler
+             (y :qnan -1
+                :snan (%compare-nans x y)
+                :infinity +1)
+           +1)
+         :infinity
+         (with-inf-nan-handler
+             (y :qnan -1
+                :snan -1
+                :infinity 0)
+           +1))
+    (with-inf-nan-handler (y :any -1)
+      (let ((compare (%compare-total-abs x y)))
+        (cond
+          ((< compare 0) -1)
+          ((> compare 0) +1)
+          (t 0))))))
+
+(declaim (inline compare-total-abs))
+(defun compare-total-abs (x y)
+  (integer-to-decimal (compare-total-abs-int x y)))
+
+(declaim (inline compare-total-int))
+(defun compare-total-int (x y)
+  (if (df-negative-p x)
+      (if (df-negative-p y)
+          (- (compare-total-abs-int x y))
+          -1)
+      (if (df-negative-p y)
+          1
+          (compare-total-abs-int x y))))
+
+(declaim (inline compare-total))
+(defun compare-total (x y)
+  (integer-to-decimal (compare-total-int x y)))
+
+(defop compare-int ((x :+infinity (if (and (df-infinity-p y)
+                                           (not (df-negative-p y)))
+                                      0
+                                      +1)
+                       :-infinity (if (and (df-infinity-p y)
+                                           (df-negative-p y))
+                                      0
+                                      -1))
+                    (y :+infinity -1
+                       :-infinity +1))
+    ()
+  (if (df-negative-p x)
+      (if (df-negative-p y)
+          (truncate (%compare-total-abs y x) 2)
+          (if (and (df-zero-p x) (df-zero-p y)) 0 -1))
+      (if (df-negative-p y)
+          (if (and (df-zero-p x) (df-zero-p y)) 0 1)
+          (truncate (%compare-total-abs x y) 2))))
+
+(declaim (inline compare))
+(defun compare (x y)
+  (let ((result (compare-int x y)))
+    (if (typep result 'fixnum)
+        (integer-to-decimal result)
+        result)))
+
 (declaim (inline maximum-abs))
 (defop maximum-abs ((x :+infinity x
                        :-infinity (if (and (df-infinity-p y)
@@ -253,7 +353,7 @@
                     (y :infinity y
                        :qnan x))
     (:return-first-qnan nil)
-  (let ((compare (%compare-total-mag x y)))
+  (let ((compare (%compare-total-abs x y)))
     (%round-decimal (case compare
                       (-2 y)
                       (+2 x)
@@ -278,11 +378,11 @@
   (%round-decimal
    (if (df-negative-p x)
        (if (df-negative-p y)
-           (if (<= (%compare-total-mag x y) 0) x y)
+           (if (<= (%compare-total-abs x y) 0) x y)
            y)
        (if (df-negative-p y)
            x
-           (if (>= (%compare-total-mag x y) 0) x y)))))
+           (if (>= (%compare-total-abs x y) 0) x y)))))
 
 (declaim (inline minimum-abs))
 (defop minimum-abs ((x :infinity (if (df-not-a-number-p y)
@@ -297,7 +397,7 @@
                     (y :infinity x
                        :qnan x))
     (:return-first-qnan nil)
-  (let ((compare (%compare-total-mag x y)))
+  (let ((compare (%compare-total-abs x y)))
     (%round-decimal (case compare
                       (-2 x)
                       (+2 y)
@@ -322,11 +422,11 @@
   (%round-decimal
    (if (df-negative-p x)
        (if (df-negative-p y)
-           (if (>= (%compare-total-mag x y) 0) x y)
+           (if (>= (%compare-total-abs x y) 0) x y)
            x)
        (if (df-negative-p y)
            y
-           (if (<= (%compare-total-mag x y) 0) x y)))))
+           (if (<= (%compare-total-abs x y) 0) x y)))))
 
 (declaim (inline dec-abs))
 (defop dec-abs ((x :infinity ++infinity+))
