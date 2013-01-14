@@ -84,20 +84,14 @@ signalled during its execution."
       (progn ,@body)
       (get-condition-flags *condition-flags*))))
 
-(defmacro with-operation ((operation-name condition-var &rest operation-arguments)
-                          (&rest condition-case)
+(defmacro with-operation ((operation-name &rest operation-arguments)
                           &body body)
-  (with-gensyms (local-error condition-name new-default-result value)
-    `(flet ((,local-error (,condition-name ,new-default-result)
+  (with-gensyms (local-error condition-name default-result value)
+    `(flet ((,local-error (,condition-name ,default-result)
               (values
-               (let ((,condition-var
-                      (make-condition ,condition-name :operation ',operation-name
-                                      :arguments (list ,@operation-arguments))))
-                 (setf (operation-defined-result ,condition-var)
-                       (or ,new-default-result
-                           (case ,condition-name
-                             ,@condition-case)))
-                 ,condition-var)
+               (make-condition ,condition-name :operation ',operation-name
+                               :arguments (list ,@operation-arguments)
+                               :defined-result ,default-result)
                #'(lambda (,value)
                    (return-from ,operation-name ,value)))))
        (let ((*decimal-local-error* #',local-error))

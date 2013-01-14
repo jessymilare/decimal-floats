@@ -86,8 +86,7 @@
       `(defun ,name ,(mapcar #'ensure-car vars)
          ,@(ensure-list documentation)
          ,@declarations
-         (with-operation (,name ,condition ,@(mapcar #'ensure-car vars))
-             ()
+         (with-operation (,name ,@(mapcar #'ensure-car vars))
            ,body)))))
 
 (declaim (inline logb-int))
@@ -350,37 +349,3 @@
                            (df-zero-p x))
                       x
                       (copy-minus x))))
-
-#+nil
-(defop next-up ((x :infinity x))
-    ()
-  (let* ((iexponent (df-iexponent x))
-         (slots (df-slots x))
-         (length (length slots))
-         (extra (df-extra x))
-         (fsld (%df-first-slot-last-digit extra))
-         (lsfd (%df-last-slot-first-digit extra))
-         (digits (%df-count-digits length fsld lsfd))
-         (precision *precision*))
-    (cond
-      ((> digits precision)
-       (let ((*rounding-mode* :always-up))
-         (round-number length iexponent slots fsld (%df-negative-p extra))))
-      (t
-       (let ((start (floor (- (+ digits fsld) precision) +decimal-slot-digits+))
-             (fsld (+ (*  +decimal-slot-digits+ (- length start 1))
-                      (1+ lsfd)
-                      (- precision))))
-         (multiple-value-bind (iexponent slots fsld lsfd infinity-p)
-             (%next-up iexponent (%resize-slots slots start length)
-                       (df-first-slot-last-digit x)
-                       (df-last-slot-first-digit x))
-           (if infinity-p
-               (if (%df-negative-p extra)
-                   +-infinity+
-                   ++infinity+)
-               (make-decimal-float iexponent (copy-array slots)
-                                   :negative-p (%df-negative-p extra)
-                                   :first-slot-last-digit fsld
-                                   :last-slot-first-digit lsfd
-                                   :subnormal-p (%df-subnormal-p extra)))))))))

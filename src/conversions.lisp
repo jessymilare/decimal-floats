@@ -6,8 +6,7 @@
 (in-package :decimal-floats)
 
 (defun integer-to-decimal (integer &key round-p)
-  (with-operation (integer-to-decimal condition integer)
-      ()
+  (with-operation (integer-to-decimal integer)
     (let ((abs-integer (abs integer)))
       (cond
         ;; Assuming INTEGER is probably a fixnum
@@ -74,8 +73,7 @@
         (if (df-negative-p x) (- result) result)))))
 
 (defun decimal-to-integer (x)
-  (with-operation (decimal-to-integer condition x)
-      ()
+  (with-operation (decimal-to-integer x)
     (with-inf-nan-handler (x :any (decimal-error-cond (x)
                                     (decimal-invalid-operation)))
       (%decimal-to-integer x))))
@@ -120,7 +118,6 @@
                                     ((<= precision 53) 1d0)
                                     (t 1l0)))))
   (with-operation (decimal-to-float x other)
-      ()
     (with-inf-nan-handler
         (x
          :nan
