@@ -1,6 +1,6 @@
 ;;; -*- Mode: Lisp; Syntax: ANSI-Common-Lisp; Base: 10 -*-
 
-;;; Copyright (c) 2009-2012 Gustavo Henrique Milaré
+;;; Copyright (c) 2009-2013 Gustavo Henrique Milaré
 ;;; See the file license for license information.
 
 (in-package :decimal-floats-tests)
